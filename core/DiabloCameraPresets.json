@@ -1,0 +1,51 @@
+﻿{
+    "presets":  [
+                    {
+                        "name":  "Close",
+                        "values":  {
+                                       "FOV":  1.00600004196167,
+                                       "Zoom":  0.62300002574920654,
+                                       "Height":  0,
+                                       "Angle":  18.200399398803711,
+                                       "Fog":  0
+                                   }
+                    },
+                    {
+                        "name":  "Medium",
+                        "values":  {
+                                       "FOV":  0.64999997615814209,
+                                       "Zoom":  1,
+                                       "Height":  0.20000000298023224,
+                                       "Angle":  18.200000762939453,
+                                       "Fog":  0
+                                   }
+                    },
+                    {
+                        "name":  "Far",
+                        "values":  {
+                                       "FOV":  0.77999997138977051,
+                                       "Zoom":  1,
+                                       "Height":  -0.20000000298023224,
+                                       "Angle":  20,
+                                       "Fog":  0
+                                   }
+                    }
+                ],
+    "hotkeys":  {
+                    "writerToggle":  "F1",
+                    "presets":  [
+                                    {
+                                        "key":  "F2",
+                                        "preset":  "Close"
+                                    },
+                                    {
+                                        "key":  "F3",
+                                        "preset":  "Medium"
+                                    },
+                                    {
+                                        "key":  "F4",
+                                        "preset":  "Far"
+                                    }
+                                ]
+                }
+}

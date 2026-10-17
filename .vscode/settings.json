@@ -1,0 +1,8 @@
+{
+  "chat.tools.terminal.autoApprove": {
+    "/^python -m compileall d:\\\\Projects\\\\Diablo4_toolkit\\\\core d:\\\\Projects\\\\Diablo4_toolkit\\\\main\\.py$/": {
+      "approve": true,
+      "matchCommandLine": true
+    }
+  }
+}
