@@ -537,7 +537,7 @@ class DiabloToolkitApp:
 
         entry.delete(0, tk.END)
         entry.insert(0, key_value)
-        entry.config(foreground=self.COLORS["text"], font=(self.FONT_FAMILY, 10))
+        entry.config(foreground=self.COLORS["text"])
         self._hide_placeholder(entry)
         return "break"
 
@@ -589,6 +589,7 @@ class DiabloToolkitApp:
         self.toggle_entry.delete(0, tk.END)
         self.toggle_entry.insert(0, "F1")
         self.toggle_entry.config(foreground=self.COLORS["text"])
+        self.toggle_entry.config(font=(self.FONT_FAMILY, 10))
         self._hide_placeholder(self.toggle_entry)
 
     def _get_key_entry_value(self, entry, placeholder):
@@ -697,7 +698,12 @@ class DiabloToolkitApp:
             text="Start or pause the AutoKeyer",
             style="Muted.Surface.TLabel",
         ).pack(side=tk.LEFT, fill=tk.X, expand=True)
-        self.toggle_entry = ttk.Entry(toggle_row, width=12, justify="center")
+        self.toggle_entry = ttk.Entry(
+            toggle_row,
+            width=12,
+            justify="center",
+            font=(self.FONT_FAMILY, 10),
+        )
         self.toggle_entry.insert(0, self.current_toggle_key.upper())
         self.toggle_entry.config(foreground=self.COLORS["text"])
         self.toggle_entry.pack(side=tk.RIGHT)
