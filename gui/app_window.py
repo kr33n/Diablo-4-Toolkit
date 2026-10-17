@@ -42,6 +42,10 @@ class DiabloToolkitApp:
         self.slider_value_labels = {}
         self._wheel_remainder = 0
         self.pages = {}
+        self._key_capture_entry = None
+        self._key_capture_allowed_keys = None
+        self._key_capture_placeholder = ""
+        self.root.bind("<KeyPress>", self._handle_key_capture)
 
         self._load_application_font()
         self._configure_window()
@@ -459,6 +463,48 @@ class DiabloToolkitApp:
         setattr(self, f"{name}_canvas", canvas)
         return inner
 
+    def _start_key_capture(self, entry, placeholder, allowed_keys=None):
+        self._key_capture_entry = entry
+        self._key_capture_allowed_keys = allowed_keys
+        self._key_capture_placeholder = placeholder
+        entry.delete(0, tk.END)
+        entry.insert(0, placeholder)
+        entry.config(foreground=self.COLORS["muted"])
+
+    def _handle_key_capture(self, event):
+        if not hasattr(self, "_key_capture_entry") or self._key_capture_entry is None:
+            return
+
+        keysym = event.keysym.upper()
+        if keysym in {"SHIFT_L", "SHIFT_R", "CONTROL_L", "CONTROL_R", "ALT_L", "ALT_R", "TAB", "ESCAPE", "CAPS_LOCK", "ENTER", "BACKSPACE", "DELETE", "UP", "DOWN", "LEFT", "RIGHT", "HOME", "END", "PAGE_UP", "PAGE_DOWN", "INSERT"}:
+            return "break"
+
+        allowed = self._key_capture_allowed_keys
+        if allowed is not None:
+            if keysym not in allowed:
+                return "break"
+            key_value = keysym
+        else:
+            if event.char:
+                key_value = event.char.upper()
+            else:
+                key_value = keysym
+
+        entry = self._key_capture_entry
+        entry.delete(0, tk.END)
+        entry.insert(0, key_value)
+        entry.config(foreground=self.COLORS["text"])
+        self._key_capture_entry = None
+        self._key_capture_allowed_keys = None
+        self._key_capture_placeholder = ""
+        return "break"
+
+    def _get_key_entry_value(self, entry, placeholder):
+        value = entry.get().strip()
+        if not value or value.upper() == placeholder.upper():
+            return ""
+        return value.upper()
+
     @staticmethod
     def _sync_scrollbar(scrollbar, first, last):
         if float(first) <= 0 and float(last) >= 1:
@@ -538,6 +584,12 @@ class DiabloToolkitApp:
                 font=(self.FONT_FAMILY, 13),
             )
             entry.pack()
+            entry.bind(
+                "<FocusIn>",
+                lambda _event, target=entry: self._start_key_capture(
+                    target, "Press a key"
+                ),
+            )
             self.key_entries.append(entry)
 
         toggle_card = ttk.Frame(frame, style="Surface.TFrame", padding=18)
@@ -554,7 +606,14 @@ class DiabloToolkitApp:
         ).pack(side=tk.LEFT, fill=tk.X, expand=True)
         self.toggle_entry = ttk.Entry(toggle_row, width=12, justify="center")
         self.toggle_entry.insert(0, self.current_toggle_key.upper())
+        self.toggle_entry.config(foreground=self.COLORS["text"])
         self.toggle_entry.pack(side=tk.RIGHT)
+        self.toggle_entry.bind(
+            "<FocusIn>",
+            lambda _event, target=self.toggle_entry: self._start_key_capture(
+                target, "Press F1-F12", [f"F{i}" for i in range(1, 13)]
+            ),
+        )
 
         interval_row = ttk.Frame(toggle_card, style="Surface.TFrame")
         interval_row.pack(fill=tk.X, pady=(14, 0))
@@ -740,9 +799,9 @@ class DiabloToolkitApp:
             self.interval_entry.focus_set()
             return
 
-        keys = [entry.get() for entry in self.key_entries]
+        keys = [self._get_key_entry_value(entry, "Press a key") for entry in self.key_entries]
         self.autokey.set_keys(keys)
-        new_toggle = self.toggle_entry.get().lower().strip()
+        new_toggle = self._get_key_entry_value(self.toggle_entry, "Press F1-F12").lower()
         if new_toggle and new_toggle != self.current_toggle_key:
             self.current_toggle_key = new_toggle
             self._register_hotkey()
