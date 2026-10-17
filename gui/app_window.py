@@ -516,7 +516,6 @@ class DiabloToolkitApp:
             entry.delete(0, tk.END)
             entry.config(foreground=self.COLORS["muted"])
             self._show_placeholder(entry, self._key_capture_placeholder)
-            self._clear_key_capture()
             return "break"
 
         if keysym in {"SHIFT_L", "SHIFT_R", "CONTROL_L", "CONTROL_R", "ALT_L", "ALT_R", "TAB", "ESCAPE", "CAPS_LOCK", "ENTER", "DELETE", "UP", "DOWN", "LEFT", "RIGHT", "HOME", "END", "PAGE_UP", "PAGE_DOWN", "INSERT"}:
@@ -538,7 +537,6 @@ class DiabloToolkitApp:
         entry.insert(0, key_value)
         entry.config(foreground=self.COLORS["text"], font=(self.FONT_FAMILY, 10))
         self._hide_placeholder(entry)
-        self._clear_key_capture()
         return "break"
 
     def _show_tooltip(self, widget, message):
