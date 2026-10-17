@@ -1,7 +1,5 @@
 import ctypes
 import json
-import struct
-import tempfile
 import threading
 import tkinter as tk
 import webbrowser
@@ -124,74 +122,10 @@ class DiabloToolkitApp:
 
     def _configure_window_icon(self):
         logo_path = Path(__file__).resolve().parents[1] / "assets" / "images" / "logo.png"
-        if not logo_path.is_file():
-            return
-
-        try:
-            self.window_icon = tk.PhotoImage(file=str(logo_path))
-            self.root.iconphoto(True, self.window_icon)
-            self.root.wm_iconphoto(True, self.window_icon)
-        except tk.TclError:
-            pass
-
-        ico_path = self._create_windows_ico_from_png(logo_path)
-        if not ico_path:
-            return
-
-        try:
-            self.root.iconbitmap(default=str(ico_path))
-            self.root.wm_iconbitmap(str(ico_path))
-        except tk.TclError:
-            pass
-
-    @staticmethod
-    def _create_windows_ico_from_png(png_path):
-        try:
-            png_bytes = png_path.read_bytes()
-        except OSError:
-            return None
-
-        if len(png_bytes) < 8 or png_bytes[:8] != b"\x89PNG\r\n\x1a\n":
-            return None
-
-        index = 8
-        width = height = 0
-        while index + 8 <= len(png_bytes):
-            chunk_length = int.from_bytes(png_bytes[index : index + 4], "big")
-            chunk_type = png_bytes[index + 4 : index + 8]
-            if chunk_type == b"IHDR":
-                if index + 8 + 8 <= len(png_bytes):
-                    width = int.from_bytes(png_bytes[index + 8 : index + 12], "big")
-                    height = int.from_bytes(png_bytes[index + 12 : index + 16], "big")
-                break
-            index += 12 + chunk_length
-
-        if width <= 0 or height <= 0:
-            return None
-
-        width_value = 0 if width >= 256 else width
-        height_value = 0 if height >= 256 else height
-        ico_path = Path(tempfile.gettempdir()) / "diablo4_toolkit_logo.ico"
-
-        header = b"\x00\x00\x01\x00\x01\x00"
-        entry = struct.pack(
-            "<BBBBHHII",
-            width_value,
-            height_value,
-            0,
-            0,
-            1,
-            32,
-            len(png_bytes),
-            22,
-        )
-        ico_bytes = header + entry + png_bytes
-
-        try:
-            ico_path.write_bytes(ico_bytes)
-            return str(ico_path)
-        except OSError:
-            return None
+        ico_path = Path(__file__).resolve().parents[1] / "assets" / "images" / "logo.ico"
+        self.window_icon = tk.PhotoImage(file=str(logo_path))
+        self.root.iconphoto(True, self.window_icon)
+        self.root.iconbitmap(default=str(ico_path))
 
     def _configure_styles(self):
         style = ttk.Style(self.root)
