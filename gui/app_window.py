@@ -45,6 +45,7 @@ class DiabloToolkitApp:
         self._key_capture_entry = None
         self._key_capture_allowed_keys = None
         self._key_capture_placeholder = ""
+        self._tooltip_window = None
         self.root.bind("<KeyPress>", self._handle_key_capture)
 
         self._load_application_font()
@@ -469,7 +470,7 @@ class DiabloToolkitApp:
         self._key_capture_placeholder = placeholder
         entry.delete(0, tk.END)
         entry.insert(0, placeholder)
-        entry.config(foreground=self.COLORS["muted"])
+        entry.config(foreground=self.COLORS["muted"], font=(self.FONT_FAMILY, 8))
 
     def _handle_key_capture(self, event):
         if not hasattr(self, "_key_capture_entry") or self._key_capture_entry is None:
@@ -479,9 +480,13 @@ class DiabloToolkitApp:
         if keysym in {"SHIFT_L", "SHIFT_R", "CONTROL_L", "CONTROL_R", "ALT_L", "ALT_R", "TAB", "ESCAPE", "CAPS_LOCK", "ENTER", "BACKSPACE", "DELETE", "UP", "DOWN", "LEFT", "RIGHT", "HOME", "END", "PAGE_UP", "PAGE_DOWN", "INSERT"}:
             return "break"
 
+        entry = self._key_capture_entry
         allowed = self._key_capture_allowed_keys
         if allowed is not None:
             if keysym not in allowed:
+                self._restore_placeholder_entry(entry)
+                self._show_tooltip(entry, "Only F1-F12 are allowed.")
+                self._clear_key_capture()
                 return "break"
             key_value = keysym
         else:
@@ -490,14 +495,54 @@ class DiabloToolkitApp:
             else:
                 key_value = keysym
 
-        entry = self._key_capture_entry
         entry.delete(0, tk.END)
         entry.insert(0, key_value)
-        entry.config(foreground=self.COLORS["text"])
+        entry.config(foreground=self.COLORS["text"], font=(self.FONT_FAMILY, 10))
+        self._clear_key_capture()
+        return "break"
+
+    def _restore_placeholder_entry(self, entry):
+        entry.delete(0, tk.END)
+        entry.insert(0, self._key_capture_placeholder)
+        entry.config(foreground=self.COLORS["muted"], font=(self.FONT_FAMILY, 8))
+
+    def _clear_key_capture(self):
         self._key_capture_entry = None
         self._key_capture_allowed_keys = None
         self._key_capture_placeholder = ""
-        return "break"
+
+    def _show_tooltip(self, widget, message):
+        if hasattr(self, "_tooltip_window") and self._tooltip_window is not None:
+            if self._tooltip_window.winfo_exists():
+                self._tooltip_window.destroy()
+        tooltip = tk.Toplevel(widget)
+        tooltip.withdraw()
+        tooltip.overrideredirect(True)
+        tooltip.attributes("-topmost", True)
+        label = tk.Label(
+            tooltip,
+            text=message,
+            fg="#f2ece2",
+            bg="#2b2c30",
+            relief="solid",
+            borderwidth=1,
+            padx=8,
+            pady=4,
+            font=(self.FONT_FAMILY, 9),
+        )
+        label.pack()
+        x = widget.winfo_rootx() + 12
+        y = widget.winfo_rooty() + widget.winfo_height() + 8
+        tooltip.geometry(f"+{x}+{y}")
+        tooltip.deiconify()
+        self._tooltip_window = tooltip
+        self.root.after(1600, lambda: self._hide_tooltip())
+
+    def _hide_tooltip(self):
+        if hasattr(self, "_tooltip_window") and self._tooltip_window is not None:
+            if self._tooltip_window.winfo_exists():
+                self._tooltip_window.destroy()
+            self._tooltip_window = None
 
     def _get_key_entry_value(self, entry, placeholder):
         value = entry.get().strip()
