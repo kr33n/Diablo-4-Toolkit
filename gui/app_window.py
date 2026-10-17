@@ -727,6 +727,14 @@ class DiabloToolkitApp:
             font=(self.FONT_FAMILY, 10, "bold"),
         )
         self.lbl_ak_status.pack(side=tk.LEFT, pady=8)
+        self.save_status_label = tk.Label(
+            action_row,
+            text="",
+            bg=self.COLORS["background"],
+            fg=self.COLORS["green"],
+            font=(self.FONT_FAMILY, 9, "bold"),
+        )
+        self.save_status_label.pack(side=tk.LEFT, padx=(12, 0), pady=8)
         ttk.Button(
             action_row,
             text="SAVE SETTINGS",
@@ -924,11 +932,8 @@ class DiabloToolkitApp:
             self.current_toggle_key = new_toggle
             self._register_hotkey()
         self._save_settings(interval_ms, keys, self.current_toggle_key)
-        messagebox.showinfo(
-            "Settings saved",
-            f"Settings applied. Interval: {interval_ms} ms.",
-            parent=self.root,
-        )
+        self.save_status_label.config(text="Saved")
+        self.root.after(5000, lambda: self.save_status_label.config(text=""))
 
     def _register_hotkey(self):
         keyboard.unhook_all()
