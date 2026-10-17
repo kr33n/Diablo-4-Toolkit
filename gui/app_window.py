@@ -404,7 +404,7 @@ class DiabloToolkitApp:
         self.nav_autokey.pack(fill=tk.X, pady=2)
         self.nav_camera = tk.Button(
             sidebar,
-            text="📷  ZoomCamera",
+            text="📷  ZoomSettings",
             bg=self.COLORS["background"],
             fg=self.COLORS["muted"],
             activebackground=self.COLORS["surface_alt"],
@@ -433,12 +433,6 @@ class DiabloToolkitApp:
         self._apply_pointer_cursor(donation_button)
         donation_button.pack(fill=tk.X, padx=4, pady=(0, 12))
         tk.Frame(sidebar, bg=self.COLORS["red"], height=2).pack(fill=tk.X, pady=(8, 12))
-        ttk.Label(
-            sidebar,
-            text="DIABLO IV\nGAME TOOLKIT",
-            style="Subtitle.TLabel",
-            justify=tk.LEFT,
-        ).pack(anchor=tk.W, padx=(12, 0))
 
         main_area = ttk.Frame(container, padding=(24, 20, 20, 12))
         main_area.grid(row=0, column=1, sticky="nsew")
@@ -456,7 +450,7 @@ class DiabloToolkitApp:
         self._build_camera_tab()
         ttk.Label(
             main_area,
-            text="v0.1 S15   •   DIABLO IV TOOLKIT   •   Use responsibly",
+            text="v0.1 S15   •   DIABLO IV TOOLKIT   •   Use responsibly   •   By Kren",
             style="Subtitle.TLabel",
         ).grid(row=1, column=0, sticky="e", pady=(8, 0))
         self._show_page("autokey")
@@ -823,7 +817,7 @@ class DiabloToolkitApp:
 
     def _build_camera_tab(self):
         frame = self.tab_camera
-        ttk.Label(frame, text="ZoomCamera 📷", style="Title.TLabel").pack(anchor=tk.W)
+        ttk.Label(frame, text="ZoomSettings 📷", style="Title.TLabel").pack(anchor=tk.W)
         ttk.Label(
             frame,
             text="Adjust the camera framing and distance.",
@@ -868,6 +862,9 @@ class DiabloToolkitApp:
         preset_row.pack(fill=tk.X, pady=(9, 0))
         self.combo_presets = ttk.Combobox(preset_row, state="disabled")
         self.combo_presets.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        self._apply_pointer_cursor(self.combo_presets)
+        self.combo_presets.bind("<Button-1>", lambda _event: self.combo_presets.selection_clear())
+        self.combo_presets.bind("<<ComboboxSelected>>", self._on_preset_selected)
         self.apply_preset_button = ttk.Button(
             preset_row,
             text="APPLY",
@@ -876,23 +873,6 @@ class DiabloToolkitApp:
         )
         self._apply_pointer_cursor(self.apply_preset_button)
         self.apply_preset_button.pack(side=tk.RIGHT, padx=(9, 0))
-
-        self.cam_save_status = tk.Label(
-            preset_row,
-            text="",
-            bg=self.COLORS["surface"],
-            fg=self.COLORS["green"],
-            font=(self.FONT_FAMILY, 9, "bold"),
-        )
-        self.cam_save_status.pack(side=tk.RIGHT, padx=(0, 10))
-        self.save_camera_button = ttk.Button(
-            preset_row,
-            text="SAVE",
-            command=self.save_camera_settings,
-            state=tk.DISABLED,
-        )
-        self._apply_pointer_cursor(self.save_camera_button)
-        self.save_camera_button.pack(side=tk.RIGHT, padx=(0, 8))
 
         controls_card = ttk.Frame(frame, style="Surface.TFrame", padding=15)
         controls_card.pack(fill=tk.BOTH, expand=True)
@@ -950,6 +930,23 @@ class DiabloToolkitApp:
             self.slider_value_labels[name] = value_label
             slider.state(["disabled"])
             self.camera_controls.append(slider)
+
+        self.save_camera_button = ttk.Button(
+            controls_card,
+            text="Save Settings",
+            command=self.save_camera_settings,
+            state=tk.DISABLED,
+        )
+        self._apply_pointer_cursor(self.save_camera_button)
+        self.save_camera_button.pack(anchor=tk.E, pady=(12, 0))
+        self.cam_save_status = tk.Label(
+            controls_card,
+            text="",
+            bg=self.COLORS["surface"],
+            fg=self.COLORS["green"],
+            font=(self.FONT_FAMILY, 9, "bold"),
+        )
+        self.cam_save_status.pack(anchor=tk.E, pady=(6, 0))
 
     def _load_saved_settings(self):
         try:
@@ -1019,6 +1016,13 @@ class DiabloToolkitApp:
             current = self.combo_presets.get()
             if current:
                 winreg.SetValueEx(key, "camera_preset", 0, winreg.REG_SZ, str(current))
+
+    def _on_preset_selected(self, _event=None):
+        if self._applying_preset or not self.camera.is_attached:
+            return
+        selected = self.combo_presets.get()
+        if selected and selected != "Custom":
+            self.apply_preset()
 
     def _load_presets(self):
         preset_path = Path(__file__).resolve().parents[1] / "core" / "DiabloCameraPresets.json"
