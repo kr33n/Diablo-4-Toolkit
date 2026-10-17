@@ -469,14 +469,15 @@ class DiabloToolkitApp:
         self._key_capture_entry = entry
         self._key_capture_allowed_keys = allowed_keys
         self._key_capture_placeholder = placeholder
-        self._show_placeholder(entry, placeholder)
+        if entry.get().strip() == "":
+            self._show_placeholder(entry, placeholder)
+        else:
+            self._hide_placeholder(entry)
 
     def _show_placeholder(self, entry, placeholder):
-        entry.delete(0, tk.END)
-        entry.config(foreground=self.COLORS["muted"], font=(self.FONT_FAMILY, 10))
+        entry.config(foreground=self.COLORS["muted"])
         label = self._placeholder_label_map.get(id(entry))
         if label is None:
-            parent = entry.winfo_parent()
             label = tk.Label(
                 entry.winfo_toplevel(),
                 text=placeholder,
@@ -486,17 +487,21 @@ class DiabloToolkitApp:
                 anchor="w",
             )
             self._placeholder_label_map[id(entry)] = label
-            label.place(in_=entry, x=6, y=1, relwidth=1, height=entry.winfo_reqheight())
-        else:
-            label.config(text=placeholder)
-            label.place(in_=entry, x=6, y=1, relwidth=1, height=entry.winfo_reqheight())
+        label.config(text=placeholder)
+        label.place(in_=entry, x=6, y=1, relwidth=1, height=entry.winfo_reqheight())
         label.lift()
-        label.place_configure(x=6, y=1)
 
     def _hide_placeholder(self, entry):
         label = self._placeholder_label_map.get(id(entry))
         if label is not None:
             label.place_forget()
+
+    def _clear_key_capture(self, _event=None):
+        if self._key_capture_entry is not None:
+            self._hide_placeholder(self._key_capture_entry)
+        self._key_capture_entry = None
+        self._key_capture_allowed_keys = None
+        self._key_capture_placeholder = ""
 
     def _handle_key_capture(self, event):
         if not hasattr(self, "_key_capture_entry") or self._key_capture_entry is None:
@@ -525,11 +530,6 @@ class DiabloToolkitApp:
         self._hide_placeholder(entry)
         self._clear_key_capture()
         return "break"
-
-    def _clear_key_capture(self):
-        self._key_capture_entry = None
-        self._key_capture_allowed_keys = None
-        self._key_capture_placeholder = ""
 
     def _show_tooltip(self, widget, message):
         if hasattr(self, "_tooltip_window") and self._tooltip_window is not None:
@@ -655,6 +655,7 @@ class DiabloToolkitApp:
                     target, "Press a key"
                 ),
             )
+            entry.bind("<FocusOut>", self._clear_key_capture)
             self.key_entries.append(entry)
 
         toggle_card = ttk.Frame(frame, style="Surface.TFrame", padding=18)
@@ -679,6 +680,7 @@ class DiabloToolkitApp:
                 target, "Press F1-F12", [f"F{i}" for i in range(1, 13)]
             ),
         )
+        self.toggle_entry.bind("<FocusOut>", self._clear_key_capture)
 
         interval_row = ttk.Frame(toggle_card, style="Surface.TFrame")
         interval_row.pack(fill=tk.X, pady=(14, 0))
