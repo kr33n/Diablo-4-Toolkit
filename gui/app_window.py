@@ -114,6 +114,14 @@ class DiabloToolkitApp:
         self.root.configure(bg=self.COLORS["background"])
         self._configure_window_icon()
 
+    def _apply_pointer_cursor(self, widget):
+        try:
+            widget.configure(cursor="hand2")
+        except tk.TclError:
+            return
+        widget.bind("<Enter>", lambda _event, target=widget: target.configure(cursor="hand2"))
+        widget.bind("<Leave>", lambda _event, target=widget: target.configure(cursor="arrow"))
+
     def _configure_window_icon(self):
         logo_path = Path(__file__).resolve().parents[1] / "assets" / "images" / "logo.png"
         if not logo_path.is_file():
@@ -392,6 +400,7 @@ class DiabloToolkitApp:
             font=self.emoji_font,
             command=lambda: self._show_page("autokey"),
         )
+        self._apply_pointer_cursor(self.nav_autokey)
         self.nav_autokey.pack(fill=tk.X, pady=2)
         self.nav_camera = tk.Button(
             sidebar,
@@ -411,15 +420,18 @@ class DiabloToolkitApp:
             font=self.emoji_font,
             command=lambda: self._show_page("camera"),
         )
+        self._apply_pointer_cursor(self.nav_camera)
         self.nav_camera.pack(fill=tk.X, pady=2)
 
         ttk.Frame(sidebar).pack(fill=tk.BOTH, expand=True)
-        ttk.Button(
+        donation_button = ttk.Button(
             sidebar,
             text="☕  Buy me a coffee",
             style="Accent.TButton",
             command=self.open_donation_page,
-        ).pack(fill=tk.X, padx=4, pady=(0, 12))
+        )
+        self._apply_pointer_cursor(donation_button)
+        donation_button.pack(fill=tk.X, padx=4, pady=(0, 12))
         tk.Frame(sidebar, bg=self.COLORS["red"], height=2).pack(fill=tk.X, pady=(8, 12))
         ttk.Label(
             sidebar,
@@ -444,7 +456,7 @@ class DiabloToolkitApp:
         self._build_camera_tab()
         ttk.Label(
             main_area,
-            text="DIABLO IV TOOLKIT   •   Use responsibly",
+            text="v0.1 S15   •   DIABLO IV TOOLKIT   •   Use responsibly",
             style="Subtitle.TLabel",
         ).grid(row=1, column=0, sticky="e", pady=(8, 0))
         self._show_page("autokey")
@@ -707,6 +719,7 @@ class DiabloToolkitApp:
                 justify="center",
                 font=(self.FONT_FAMILY, 13),
             )
+            self._apply_pointer_cursor(entry)
             entry.pack()
             entry.bind(
                 "<FocusIn>",
@@ -735,6 +748,7 @@ class DiabloToolkitApp:
             justify="center",
             font=(self.FONT_FAMILY, 10),
         )
+        self._apply_pointer_cursor(self.toggle_entry)
         self.toggle_entry.insert(0, self.current_toggle_key.upper())
         self.toggle_entry.config(foreground=self.COLORS["text"])
         self.toggle_entry.pack(side=tk.RIGHT)
@@ -777,6 +791,7 @@ class DiabloToolkitApp:
             style="TButton",
             command=self.clear_all_key_inputs,
         )
+        self._apply_pointer_cursor(self.clear_inputs_button)
         self.clear_inputs_button.pack(anchor=tk.W, pady=(12, 0))
 
         action_row = ttk.Frame(frame)
@@ -797,12 +812,14 @@ class DiabloToolkitApp:
             font=(self.FONT_FAMILY, 9, "bold"),
         )
         self.save_status_label.pack(side=tk.LEFT, padx=(12, 0), pady=8)
-        ttk.Button(
+        save_settings_button = ttk.Button(
             action_row,
             text="SAVE SETTINGS",
             style="Accent.TButton",
             command=self.apply_autokey,
-        ).pack(side=tk.RIGHT)
+        )
+        self._apply_pointer_cursor(save_settings_button)
+        save_settings_button.pack(side=tk.RIGHT)
 
     def _build_camera_tab(self):
         frame = self.tab_camera
@@ -839,6 +856,7 @@ class DiabloToolkitApp:
             style="Accent.TButton",
             command=self.attach_and_scan,
         )
+        self._apply_pointer_cursor(self.attach_button)
         self.attach_button.pack(side=tk.RIGHT, padx=(12, 0))
 
         preset_card = ttk.Frame(frame, style="Surface.TFrame", padding=15)
@@ -856,6 +874,7 @@ class DiabloToolkitApp:
             command=self.apply_preset,
             state=tk.DISABLED,
         )
+        self._apply_pointer_cursor(self.apply_preset_button)
         self.apply_preset_button.pack(side=tk.RIGHT, padx=(9, 0))
 
         self.cam_save_status = tk.Label(
@@ -872,6 +891,7 @@ class DiabloToolkitApp:
             command=self.save_camera_settings,
             state=tk.DISABLED,
         )
+        self._apply_pointer_cursor(self.save_camera_button)
         self.save_camera_button.pack(side=tk.RIGHT, padx=(0, 8))
 
         controls_card = ttk.Frame(frame, style="Surface.TFrame", padding=15)
