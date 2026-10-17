@@ -865,15 +865,6 @@ class DiabloToolkitApp:
         self._apply_pointer_cursor(self.combo_presets)
         self.combo_presets.bind("<Button-1>", lambda _event: self.combo_presets.selection_clear())
         self.combo_presets.bind("<<ComboboxSelected>>", self._on_preset_selected)
-        self.apply_preset_button = ttk.Button(
-            preset_row,
-            text="APPLY",
-            command=self.apply_preset,
-            state=tk.DISABLED,
-        )
-        self._apply_pointer_cursor(self.apply_preset_button)
-        self.apply_preset_button.pack(side=tk.RIGHT, padx=(9, 0))
-
         controls_card = ttk.Frame(frame, style="Surface.TFrame", padding=15)
         controls_card.pack(fill=tk.BOTH, expand=True)
         ttk.Label(
@@ -1116,8 +1107,6 @@ class DiabloToolkitApp:
         self.attach_button.config(state=tk.DISABLED, text="CONNECTED")
         for control in self.camera_controls:
             control.state(["!disabled"])
-        if self.presets:
-            self.apply_preset_button.config(state=tk.NORMAL)
         self.save_camera_button.config(state=tk.NORMAL)
         self.combo_presets.config(state="readonly")
         self.root.after(500, self._monitor_camera_writer)
@@ -1136,7 +1125,6 @@ class DiabloToolkitApp:
         self._set_camera_status(str(error), self.COLORS["red_hover"])
         self.attach_button.config(state=tk.NORMAL, text="TRY AGAIN")
         self.combo_presets.config(state="disabled")
-        self.apply_preset_button.config(state=tk.DISABLED)
         self.save_camera_button.config(state=tk.DISABLED)
 
     def _set_camera_status(self, text, color):
