@@ -976,9 +976,7 @@ class DiabloToolkitApp:
                     if isinstance(values, str):
                         data = json.loads(values)
                         for name, value in data.items():
-                            if name in self.sliders:
-                                self.sliders[name].set(value)
-                                self.slider_value_labels[name].config(text=f"{float(value):.2f}")
+                            self._apply_camera_slider_value(name, value)
                 except FileNotFoundError:
                     pass
 
@@ -990,6 +988,13 @@ class DiabloToolkitApp:
                     pass
         except FileNotFoundError:
             return
+
+    def _apply_camera_slider_value(self, name, value):
+        if name not in self.sliders:
+            return
+        value = float(value)
+        self.sliders[name].set(value)
+        self.slider_value_labels[name].config(text=f"{value:.2f}")
 
     def _save_settings(self, interval_ms, keys, toggle_key):
         with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Diablo IV Toolkit") as key:
@@ -1131,6 +1136,9 @@ class DiabloToolkitApp:
         self.lbl_cam_status.config(text=text, fg=color)
 
     def update_camera(self, name, value):
+        value = float(value)
+        if name in self.slider_value_labels:
+            self.slider_value_labels[name].config(text=f"{value:.2f}")
         try:
             self.camera.write_camera_value(name, value)
         except CameraPatcherError as error:
