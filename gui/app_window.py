@@ -848,7 +848,7 @@ class DiabloToolkitApp:
         )
         preset_row = ttk.Frame(preset_card, style="Surface.TFrame")
         preset_row.pack(fill=tk.X, pady=(9, 0))
-        self.combo_presets = ttk.Combobox(preset_row, state="readonly")
+        self.combo_presets = ttk.Combobox(preset_row, state="disabled")
         self.combo_presets.pack(side=tk.LEFT, fill=tk.X, expand=True)
         self.apply_preset_button = ttk.Button(
             preset_row,
@@ -1095,6 +1095,7 @@ class DiabloToolkitApp:
         if self.presets:
             self.apply_preset_button.config(state=tk.NORMAL)
         self.save_camera_button.config(state=tk.NORMAL)
+        self.combo_presets.config(state="readonly")
         self.root.after(500, self._monitor_camera_writer)
 
     def _monitor_camera_writer(self):
@@ -1110,6 +1111,9 @@ class DiabloToolkitApp:
     def _scan_error(self, error):
         self._set_camera_status(str(error), self.COLORS["red_hover"])
         self.attach_button.config(state=tk.NORMAL, text="TRY AGAIN")
+        self.combo_presets.config(state="disabled")
+        self.apply_preset_button.config(state=tk.DISABLED)
+        self.save_camera_button.config(state=tk.DISABLED)
 
     def _set_camera_status(self, text, color):
         self.lbl_cam_status.config(text=text, fg=color)
