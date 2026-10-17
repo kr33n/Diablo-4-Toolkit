@@ -333,6 +333,11 @@ class DiabloToolkitApp:
             borderwidth=0,
             font=(self.FONT_FAMILY, 10, "bold"),
         )
+        style.map(
+            "ActiveNav.TButton",
+            foreground=[("active", self.COLORS["gold"])],
+            background=[("active", self.COLORS["surface"])],
+        )
         style.configure(
             "Vertical.TScrollbar",
             background=self.COLORS["surface_alt"],
@@ -369,14 +374,14 @@ class DiabloToolkitApp:
         )
         self.nav_autokey = ttk.Button(
             sidebar,
-            text="⌨   AutoKey",
+            text="⚒️  KeyForge",
             style="ActiveNav.TButton",
             command=lambda: self._show_page("autokey"),
         )
         self.nav_autokey.pack(fill=tk.X, pady=2)
         self.nav_camera = ttk.Button(
             sidebar,
-            text="◉   Camera",
+            text="📷  ZoomCamera",
             style="Nav.TButton",
             command=lambda: self._show_page("camera"),
         )
@@ -641,7 +646,7 @@ class DiabloToolkitApp:
 
     def _build_autokey_tab(self):
         frame = self.tab_autokey
-        ttk.Label(frame, text="AUTOKEYER", style="Title.TLabel").pack(anchor=tk.W)
+        ttk.Label(frame, text="KEYFORGE ⚒️", style="Title.TLabel").pack(anchor=tk.W)
         ttk.Label(
             frame,
             text="Repeat selected keys at your preferred interval.",
@@ -775,7 +780,7 @@ class DiabloToolkitApp:
 
     def _build_camera_tab(self):
         frame = self.tab_camera
-        ttk.Label(frame, text="CAMERA", style="Title.TLabel").pack(anchor=tk.W)
+        ttk.Label(frame, text="📷 ZoomCamera", style="Title.TLabel").pack(anchor=tk.W)
         ttk.Label(
             frame,
             text="Adjust the camera framing and distance.",
