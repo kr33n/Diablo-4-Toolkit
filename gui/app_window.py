@@ -44,6 +44,7 @@ class DiabloToolkitApp:
         self._wheel_remainder = 0
         self.pages = {}
         self.emoji_font = ("Segoe UI Emoji", 11, "bold")
+        self._applying_preset = False
         self._key_capture_entry = None
         self._key_capture_allowed_keys = None
         self._key_capture_placeholder = ""
@@ -54,8 +55,8 @@ class DiabloToolkitApp:
         self._configure_window()
         self._configure_styles()
         self._build_layout()
-        self._load_saved_settings()
         self._load_presets()
+        self._load_saved_settings()
         self._register_hotkey()
 
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
@@ -805,7 +806,7 @@ class DiabloToolkitApp:
 
     def _build_camera_tab(self):
         frame = self.tab_camera
-        ttk.Label(frame, text="📷 ZoomCamera", style="Title.TLabel").pack(anchor=tk.W)
+        ttk.Label(frame, text="ZoomCamera 📷", style="Title.TLabel").pack(anchor=tk.W)
         ttk.Label(
             frame,
             text="Adjust the camera framing and distance.",
@@ -856,6 +857,22 @@ class DiabloToolkitApp:
             state=tk.DISABLED,
         )
         self.apply_preset_button.pack(side=tk.RIGHT, padx=(9, 0))
+
+        self.cam_save_status = tk.Label(
+            preset_row,
+            text="",
+            bg=self.COLORS["surface"],
+            fg=self.COLORS["green"],
+            font=(self.FONT_FAMILY, 9, "bold"),
+        )
+        self.cam_save_status.pack(side=tk.RIGHT, padx=(0, 10))
+        self.save_camera_button = ttk.Button(
+            preset_row,
+            text="SAVE",
+            command=self.save_camera_settings,
+            state=tk.DISABLED,
+        )
+        self.save_camera_button.pack(side=tk.RIGHT, padx=(0, 8))
 
         controls_card = ttk.Frame(frame, style="Surface.TFrame", padding=15)
         controls_card.pack(fill=tk.BOTH, expand=True)
@@ -945,6 +962,24 @@ class DiabloToolkitApp:
                     self.toggle_entry.delete(0, tk.END)
                     self.toggle_entry.insert(0, self.current_toggle_key.upper())
                     self.toggle_entry.config(foreground=self.COLORS["text"])
+
+                try:
+                    values = winreg.QueryValueEx(key, "camera_values")[0]
+                    if isinstance(values, str):
+                        data = json.loads(values)
+                        for name, value in data.items():
+                            if name in self.sliders:
+                                self.sliders[name].set(value)
+                                self.slider_value_labels[name].config(text=f"{float(value):.2f}")
+                except FileNotFoundError:
+                    pass
+
+                try:
+                    preset_name = str(winreg.QueryValueEx(key, "camera_preset")[0])
+                    if preset_name and preset_name in self.presets:
+                        self.combo_presets.set(preset_name)
+                except FileNotFoundError:
+                    pass
         except FileNotFoundError:
             return
 
@@ -954,6 +989,16 @@ class DiabloToolkitApp:
             winreg.SetValueEx(key, "toggle_key", 0, winreg.REG_SZ, str(toggle_key).upper())
             for index, key_value in enumerate(keys, start=1):
                 winreg.SetValueEx(key, f"slot_{index}", 0, winreg.REG_SZ, str(key_value).upper())
+
+    def _save_camera_values(self):
+        values = {}
+        for name, variable in self.sliders.items():
+            values[name] = float(variable.get())
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Diablo IV Toolkit") as key:
+            winreg.SetValueEx(key, "camera_values", 0, winreg.REG_SZ, json.dumps(values))
+            current = self.combo_presets.get()
+            if current:
+                winreg.SetValueEx(key, "camera_preset", 0, winreg.REG_SZ, str(current))
 
     def _load_presets(self):
         preset_path = Path(__file__).resolve().parents[1] / "core" / "DiabloCameraPresets.json"
@@ -969,7 +1014,10 @@ class DiabloToolkitApp:
 
         for preset in data.get("presets", []):
             self.presets[preset["name"]] = preset["values"]
-        self.combo_presets["values"] = list(self.presets.keys())
+        preset_names = list(self.presets.keys())
+        if "Custom" not in preset_names:
+            preset_names.insert(0, "Custom")
+        self.combo_presets["values"] = preset_names
         if self.presets:
             self.combo_presets.current(0)
 
@@ -1046,6 +1094,7 @@ class DiabloToolkitApp:
             control.state(["!disabled"])
         if self.presets:
             self.apply_preset_button.config(state=tk.NORMAL)
+        self.save_camera_button.config(state=tk.NORMAL)
         self.root.after(500, self._monitor_camera_writer)
 
     def _monitor_camera_writer(self):
@@ -1070,16 +1119,37 @@ class DiabloToolkitApp:
             self.camera.write_camera_value(name, value)
         except CameraPatcherError as error:
             self._set_camera_status(str(error), self.COLORS["red_hover"])
+        if self._applying_preset:
+            return
+        current = self.combo_presets.get()
+        if current and current != "Custom" and current not in {"", None}:
+            self._set_custom_preset()
+
+    def _set_custom_preset(self):
+        values = list(self.combo_presets["values"]) if self.combo_presets["values"] else []
+        if "Custom" not in values:
+            values.insert(0, "Custom")
+            self.combo_presets["values"] = values
+        self.combo_presets.set("Custom")
+
+    def save_camera_settings(self):
+        self._save_camera_values()
+        self.cam_save_status.config(text="Saved")
+        self.root.after(5000, lambda: self.cam_save_status.config(text=""))
 
     def apply_preset(self):
         selected = self.combo_presets.get()
         if selected in self.presets:
-            values = self.presets[selected]
-            for key, value in values.items():
-                if key in self.sliders:
-                    self.sliders[key].set(value)
-                    self.slider_value_labels[key].config(text=f"{float(value):.2f}")
-                    self.update_camera(key, value)
+            self._applying_preset = True
+            try:
+                values = self.presets[selected]
+                for key, value in values.items():
+                    if key in self.sliders:
+                        self.sliders[key].set(value)
+                        self.slider_value_labels[key].config(text=f"{float(value):.2f}")
+                        self.update_camera(key, value)
+            finally:
+                self._applying_preset = False
 
     def open_donation_page(self):
         if not webbrowser.open_new_tab("https://buymeacoffee.com/kren"):
