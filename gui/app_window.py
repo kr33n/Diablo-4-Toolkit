@@ -43,6 +43,7 @@ class DiabloToolkitApp:
         self.slider_value_labels = {}
         self._wheel_remainder = 0
         self.pages = {}
+        self.emoji_font = ("Segoe UI Emoji", 11, "bold")
         self._key_capture_entry = None
         self._key_capture_allowed_keys = None
         self._key_capture_placeholder = ""
@@ -372,17 +373,41 @@ class DiabloToolkitApp:
         ttk.Label(sidebar, text="TOOLS", style="Subtitle.TLabel").pack(
             anchor=tk.W, padx=(12, 0), pady=(0, 8)
         )
-        self.nav_autokey = ttk.Button(
+        self.nav_autokey = tk.Button(
             sidebar,
             text="⚒️  KeyForge",
-            style="ActiveNav.TButton",
+            bg=self.COLORS["surface"],
+            fg=self.COLORS["gold"],
+            activebackground=self.COLORS["surface_alt"],
+            activeforeground=self.COLORS["gold"],
+            relief=tk.FLAT,
+            bd=0,
+            highlightthickness=0,
+            justify=tk.LEFT,
+            anchor=tk.W,
+            compound=tk.LEFT,
+            padx=16,
+            pady=13,
+            font=self.emoji_font,
             command=lambda: self._show_page("autokey"),
         )
         self.nav_autokey.pack(fill=tk.X, pady=2)
-        self.nav_camera = ttk.Button(
+        self.nav_camera = tk.Button(
             sidebar,
             text="📷  ZoomCamera",
-            style="Nav.TButton",
+            bg=self.COLORS["background"],
+            fg=self.COLORS["muted"],
+            activebackground=self.COLORS["surface_alt"],
+            activeforeground=self.COLORS["text"],
+            relief=tk.FLAT,
+            bd=0,
+            highlightthickness=0,
+            justify=tk.LEFT,
+            anchor=tk.W,
+            compound=tk.LEFT,
+            padx=16,
+            pady=13,
+            font=self.emoji_font,
             command=lambda: self._show_page("camera"),
         )
         self.nav_camera.pack(fill=tk.X, pady=2)
@@ -638,11 +663,11 @@ class DiabloToolkitApp:
                 page_frame.grid_remove()
 
         if page == "camera":
-            self.nav_camera.configure(style="ActiveNav.TButton")
-            self.nav_autokey.configure(style="Nav.TButton")
+            self.nav_camera.configure(bg=self.COLORS["surface"], fg=self.COLORS["gold"], activebackground=self.COLORS["surface"], activeforeground=self.COLORS["gold"], font=self.emoji_font)
+            self.nav_autokey.configure(bg=self.COLORS["background"], fg=self.COLORS["muted"], activebackground=self.COLORS["surface_alt"], activeforeground=self.COLORS["text"], font=self.emoji_font)
         else:
-            self.nav_autokey.configure(style="ActiveNav.TButton")
-            self.nav_camera.configure(style="Nav.TButton")
+            self.nav_autokey.configure(bg=self.COLORS["surface"], fg=self.COLORS["gold"], activebackground=self.COLORS["surface"], activeforeground=self.COLORS["gold"], font=self.emoji_font)
+            self.nav_camera.configure(bg=self.COLORS["background"], fg=self.COLORS["muted"], activebackground=self.COLORS["surface_alt"], activeforeground=self.COLORS["text"], font=self.emoji_font)
 
     def _build_autokey_tab(self):
         frame = self.tab_autokey
