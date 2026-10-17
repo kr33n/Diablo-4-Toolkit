@@ -46,6 +46,7 @@ class DiabloToolkitApp:
         self._key_capture_allowed_keys = None
         self._key_capture_placeholder = ""
         self._tooltip_window = None
+        self._placeholder_label_map = {}
         self.root.bind("<KeyPress>", self._handle_key_capture)
 
         self._load_application_font()
@@ -468,9 +469,34 @@ class DiabloToolkitApp:
         self._key_capture_entry = entry
         self._key_capture_allowed_keys = allowed_keys
         self._key_capture_placeholder = placeholder
+        self._show_placeholder(entry, placeholder)
+
+    def _show_placeholder(self, entry, placeholder):
         entry.delete(0, tk.END)
-        entry.insert(0, placeholder)
-        entry.config(foreground=self.COLORS["muted"], font=(self.FONT_FAMILY, 8))
+        entry.config(foreground=self.COLORS["muted"], font=(self.FONT_FAMILY, 10))
+        label = self._placeholder_label_map.get(id(entry))
+        if label is None:
+            parent = entry.winfo_parent()
+            label = tk.Label(
+                entry.winfo_toplevel(),
+                text=placeholder,
+                bg=self.COLORS["surface_alt"],
+                fg=self.COLORS["muted"],
+                font=(self.FONT_FAMILY, 8),
+                anchor="w",
+            )
+            self._placeholder_label_map[id(entry)] = label
+            label.place(in_=entry, x=6, y=1, relwidth=1, height=entry.winfo_reqheight())
+        else:
+            label.config(text=placeholder)
+            label.place(in_=entry, x=6, y=1, relwidth=1, height=entry.winfo_reqheight())
+        label.lift()
+        label.place_configure(x=6, y=1)
+
+    def _hide_placeholder(self, entry):
+        label = self._placeholder_label_map.get(id(entry))
+        if label is not None:
+            label.place_forget()
 
     def _handle_key_capture(self, event):
         if not hasattr(self, "_key_capture_entry") or self._key_capture_entry is None:
@@ -484,9 +510,7 @@ class DiabloToolkitApp:
         allowed = self._key_capture_allowed_keys
         if allowed is not None:
             if keysym not in allowed:
-                self._restore_placeholder_entry(entry)
                 self._show_tooltip(entry, "Only F1-F12 are allowed.")
-                self._clear_key_capture()
                 return "break"
             key_value = keysym
         else:
@@ -498,13 +522,9 @@ class DiabloToolkitApp:
         entry.delete(0, tk.END)
         entry.insert(0, key_value)
         entry.config(foreground=self.COLORS["text"], font=(self.FONT_FAMILY, 10))
+        self._hide_placeholder(entry)
         self._clear_key_capture()
         return "break"
-
-    def _restore_placeholder_entry(self, entry):
-        entry.delete(0, tk.END)
-        entry.insert(0, self._key_capture_placeholder)
-        entry.config(foreground=self.COLORS["muted"], font=(self.FONT_FAMILY, 8))
 
     def _clear_key_capture(self):
         self._key_capture_entry = None
