@@ -1,11 +1,14 @@
 import ctypes
 import json
+import struct
+import tempfile
 import threading
 import tkinter as tk
 import webbrowser
 from pathlib import Path
 from ctypes import wintypes
 from tkinter import messagebox, ttk
+import winreg
 
 import keyboard
 
@@ -40,12 +43,20 @@ class DiabloToolkitApp:
         self.slider_value_labels = {}
         self._wheel_remainder = 0
         self.pages = {}
+        self.emoji_font = ("Segoe UI Emoji", 11, "bold")
+        self._applying_preset = False
+        self._key_capture_entry = None
+        self._key_capture_allowed_keys = None
+        self._key_capture_placeholder = ""
+        self._tooltip_window = None
+        self._placeholder_label_map = {}
 
         self._load_application_font()
         self._configure_window()
         self._configure_styles()
         self._build_layout()
         self._load_presets()
+        self._load_saved_settings()
         self._register_hotkey()
 
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
@@ -101,6 +112,86 @@ class DiabloToolkitApp:
         self.root.geometry(f"{width}x{height}+{x}+{y}")
         self.root.minsize(min(720, screen_width), min(580, screen_height))
         self.root.configure(bg=self.COLORS["background"])
+        self._configure_window_icon()
+
+    def _apply_pointer_cursor(self, widget):
+        try:
+            widget.configure(cursor="hand2")
+        except tk.TclError:
+            return
+        widget.bind("<Enter>", lambda _event, target=widget: target.configure(cursor="hand2"))
+        widget.bind("<Leave>", lambda _event, target=widget: target.configure(cursor="arrow"))
+
+    def _configure_window_icon(self):
+        logo_path = Path(__file__).resolve().parents[1] / "assets" / "images" / "logo.png"
+        if not logo_path.is_file():
+            return
+
+        try:
+            self.window_icon = tk.PhotoImage(file=str(logo_path))
+            self.root.iconphoto(True, self.window_icon)
+            self.root.wm_iconphoto(True, self.window_icon)
+        except tk.TclError:
+            pass
+
+        ico_path = self._create_windows_ico_from_png(logo_path)
+        if not ico_path:
+            return
+
+        try:
+            self.root.iconbitmap(default=str(ico_path))
+            self.root.wm_iconbitmap(str(ico_path))
+        except tk.TclError:
+            pass
+
+    @staticmethod
+    def _create_windows_ico_from_png(png_path):
+        try:
+            png_bytes = png_path.read_bytes()
+        except OSError:
+            return None
+
+        if len(png_bytes) < 8 or png_bytes[:8] != b"\x89PNG\r\n\x1a\n":
+            return None
+
+        index = 8
+        width = height = 0
+        while index + 8 <= len(png_bytes):
+            chunk_length = int.from_bytes(png_bytes[index : index + 4], "big")
+            chunk_type = png_bytes[index + 4 : index + 8]
+            if chunk_type == b"IHDR":
+                if index + 8 + 8 <= len(png_bytes):
+                    width = int.from_bytes(png_bytes[index + 8 : index + 12], "big")
+                    height = int.from_bytes(png_bytes[index + 12 : index + 16], "big")
+                break
+            index += 12 + chunk_length
+
+        if width <= 0 or height <= 0:
+            return None
+
+        width_value = 0 if width >= 256 else width
+        height_value = 0 if height >= 256 else height
+        ico_path = Path(tempfile.gettempdir()) / "diablo4_toolkit_logo.ico"
+
+        header = b"\x00\x00\x01\x00\x01\x00"
+        entry = struct.pack(
+            "<BBBBHHII",
+            width_value,
+            height_value,
+            0,
+            0,
+            1,
+            32,
+            len(png_bytes),
+            22,
+        )
+        ico_bytes = header + entry + png_bytes
+
+        try:
+            ico_path.write_bytes(ico_bytes)
+            return str(ico_path)
+        except OSError:
+            return None
 
     def _configure_styles(self):
         style = ttk.Style(self.root)
@@ -252,6 +343,11 @@ class DiabloToolkitApp:
             borderwidth=0,
             font=(self.FONT_FAMILY, 10, "bold"),
         )
+        style.map(
+            "ActiveNav.TButton",
+            foreground=[("active", self.COLORS["gold"])],
+            background=[("active", self.COLORS["surface"])],
+        )
         style.configure(
             "Vertical.TScrollbar",
             background=self.COLORS["surface_alt"],
@@ -266,10 +362,13 @@ class DiabloToolkitApp:
         container.columnconfigure(1, weight=1)
         container.rowconfigure(0, weight=1)
 
-        sidebar = ttk.Frame(container, style="TFrame", padding=(16, 22, 12, 18))
-        sidebar.grid(row=0, column=0, sticky="ns")
-        tk.Frame(sidebar, bg=self.COLORS["border"], width=1).place(
-            relx=1, rely=0, relheight=1, anchor="ne"
+        sidebar_wrapper = ttk.Frame(container, style="TFrame")
+        sidebar_wrapper.grid(row=0, column=0, sticky="ns")
+
+        sidebar = ttk.Frame(sidebar_wrapper, style="TFrame", padding=(16, 22, 12, 18))
+        sidebar.pack(side=tk.LEFT, fill=tk.Y)
+        tk.Frame(sidebar_wrapper, bg=self.COLORS["border"], width=1).pack(
+            side=tk.LEFT, fill=tk.Y
         )
 
         logo_path = Path(__file__).resolve().parents[1] / "assets" / "images" / "logo.png"
@@ -283,35 +382,57 @@ class DiabloToolkitApp:
         ttk.Label(sidebar, text="TOOLS", style="Subtitle.TLabel").pack(
             anchor=tk.W, padx=(12, 0), pady=(0, 8)
         )
-        self.nav_autokey = ttk.Button(
+        self.nav_autokey = tk.Button(
             sidebar,
-            text="⌨   AutoKey",
-            style="ActiveNav.TButton",
+            text="⚒️  KeyForge",
+            bg=self.COLORS["surface"],
+            fg=self.COLORS["gold"],
+            activebackground=self.COLORS["surface_alt"],
+            activeforeground=self.COLORS["gold"],
+            relief=tk.FLAT,
+            bd=0,
+            highlightthickness=0,
+            justify=tk.LEFT,
+            anchor=tk.W,
+            compound=tk.LEFT,
+            padx=16,
+            pady=13,
+            font=self.emoji_font,
             command=lambda: self._show_page("autokey"),
         )
+        self._apply_pointer_cursor(self.nav_autokey)
         self.nav_autokey.pack(fill=tk.X, pady=2)
-        self.nav_camera = ttk.Button(
+        self.nav_camera = tk.Button(
             sidebar,
-            text="◉   Camera",
-            style="Nav.TButton",
+            text="📷  ZoomSettings",
+            bg=self.COLORS["background"],
+            fg=self.COLORS["muted"],
+            activebackground=self.COLORS["surface_alt"],
+            activeforeground=self.COLORS["text"],
+            relief=tk.FLAT,
+            bd=0,
+            highlightthickness=0,
+            justify=tk.LEFT,
+            anchor=tk.W,
+            compound=tk.LEFT,
+            padx=16,
+            pady=13,
+            font=self.emoji_font,
             command=lambda: self._show_page("camera"),
         )
+        self._apply_pointer_cursor(self.nav_camera)
         self.nav_camera.pack(fill=tk.X, pady=2)
 
         ttk.Frame(sidebar).pack(fill=tk.BOTH, expand=True)
-        ttk.Button(
+        donation_button = ttk.Button(
             sidebar,
             text="☕  Buy me a coffee",
             style="Accent.TButton",
             command=self.open_donation_page,
-        ).pack(fill=tk.X, padx=4, pady=(0, 12))
+        )
+        self._apply_pointer_cursor(donation_button)
+        donation_button.pack(fill=tk.X, padx=4, pady=(0, 12))
         tk.Frame(sidebar, bg=self.COLORS["red"], height=2).pack(fill=tk.X, pady=(8, 12))
-        ttk.Label(
-            sidebar,
-            text="DIABLO IV\nGAME TOOLKIT",
-            style="Subtitle.TLabel",
-            justify=tk.LEFT,
-        ).pack(anchor=tk.W, padx=(12, 0))
 
         main_area = ttk.Frame(container, padding=(24, 20, 20, 12))
         main_area.grid(row=0, column=1, sticky="nsew")
@@ -329,7 +450,7 @@ class DiabloToolkitApp:
         self._build_camera_tab()
         ttk.Label(
             main_area,
-            text="DIABLO IV TOOLKIT   •   Use responsibly",
+            text="v0.1 S15   •   DIABLO IV TOOLKIT   •   Use responsibly   •   By Kren",
             style="Subtitle.TLabel",
         ).grid(row=1, column=0, sticky="e", pady=(8, 0))
         self._show_page("autokey")
@@ -382,6 +503,138 @@ class DiabloToolkitApp:
         setattr(self, f"{name}_canvas", canvas)
         return inner
 
+    def _start_key_capture(self, entry, placeholder, allowed_keys=None):
+        self._clear_key_capture()
+        self._key_capture_entry = entry
+        self._key_capture_allowed_keys = allowed_keys
+        self._key_capture_placeholder = placeholder
+        entry.unbind("<KeyPress>")
+        entry.bind("<KeyPress>", self._handle_key_capture)
+        if entry.get().strip() == "":
+            self._show_placeholder(entry, placeholder)
+        else:
+            self._hide_placeholder(entry)
+
+    def _show_placeholder(self, entry, placeholder):
+        entry.config(foreground=self.COLORS["muted"])
+        label = self._placeholder_label_map.get(id(entry))
+        if label is None:
+            label = tk.Label(
+                entry.winfo_toplevel(),
+                text=placeholder,
+                bg=self.COLORS["surface_alt"],
+                fg=self.COLORS["muted"],
+                font=(self.FONT_FAMILY, 8),
+                anchor="w",
+            )
+            self._placeholder_label_map[id(entry)] = label
+        label.config(text=placeholder)
+        label.place(in_=entry, x=6, y=1, relwidth=1, height=entry.winfo_reqheight())
+        label.lift()
+
+    def _hide_placeholder(self, entry):
+        label = self._placeholder_label_map.get(id(entry))
+        if label is not None:
+            label.place_forget()
+
+    def _clear_key_capture(self, _event=None):
+        if self._key_capture_entry is not None:
+            self._hide_placeholder(self._key_capture_entry)
+        self._key_capture_entry = None
+        self._key_capture_allowed_keys = None
+        self._key_capture_placeholder = ""
+
+    def _handle_key_capture(self, event):
+        if not hasattr(self, "_key_capture_entry") or self._key_capture_entry is None:
+            return "break"
+
+        keysym = event.keysym.upper()
+        entry = self._key_capture_entry
+
+        if keysym == "BACKSPACE":
+            entry.delete(0, tk.END)
+            entry.config(foreground=self.COLORS["muted"])
+            self._show_placeholder(entry, self._key_capture_placeholder)
+            return "break"
+
+        if keysym in {"SHIFT_L", "SHIFT_R", "CONTROL_L", "CONTROL_R", "ALT_L", "ALT_R", "TAB", "ESCAPE", "CAPS_LOCK", "ENTER", "DELETE", "UP", "DOWN", "LEFT", "RIGHT", "HOME", "END", "PAGE_UP", "PAGE_DOWN", "INSERT"}:
+            return "break"
+
+        allowed = self._key_capture_allowed_keys
+        if allowed is not None:
+            if keysym not in allowed:
+                self._show_tooltip(entry, "Only F1-F12 are allowed.")
+                return "break"
+            key_value = keysym
+        else:
+            if event.char:
+                key_value = event.char.upper()
+            else:
+                key_value = keysym
+
+        entry.delete(0, tk.END)
+        entry.insert(0, key_value)
+        entry.config(foreground=self.COLORS["text"])
+        self._hide_placeholder(entry)
+        return "break"
+
+    def _show_tooltip(self, widget, message):
+        if hasattr(self, "_tooltip_window") and self._tooltip_window is not None:
+            if self._tooltip_window.winfo_exists():
+                self._tooltip_window.destroy()
+        tooltip = tk.Toplevel(widget)
+        tooltip.withdraw()
+        tooltip.overrideredirect(True)
+        tooltip.attributes("-topmost", True)
+        label = tk.Label(
+            tooltip,
+            text=message,
+            fg="#f2ece2",
+            bg="#2b2c30",
+            relief="solid",
+            borderwidth=1,
+            padx=8,
+            pady=4,
+            font=(self.FONT_FAMILY, 9),
+        )
+        label.pack()
+        x = widget.winfo_rootx() + 12
+        y = widget.winfo_rooty() + widget.winfo_height() + 8
+        tooltip.geometry(f"+{x}+{y}")
+        tooltip.deiconify()
+        self._tooltip_window = tooltip
+        self.root.after(1600, lambda: self._hide_tooltip())
+
+    def _hide_tooltip(self):
+        if hasattr(self, "_tooltip_window") and self._tooltip_window is not None:
+            if self._tooltip_window.winfo_exists():
+                self._tooltip_window.destroy()
+            self._tooltip_window = None
+
+    def clear_all_key_inputs(self):
+        for entry in self.key_entries:
+            entry.delete(0, tk.END)
+            entry.config(foreground=self.COLORS["muted"])
+            self._hide_placeholder(entry)
+
+        self.toggle_entry.delete(0, tk.END)
+        self.toggle_entry.config(foreground=self.COLORS["muted"])
+        self._show_placeholder(self.toggle_entry, "Press F1-F12")
+
+        self.autokey.set_keys([])
+        self.current_toggle_key = "f1"
+        self.toggle_entry.delete(0, tk.END)
+        self.toggle_entry.insert(0, "F1")
+        self.toggle_entry.config(foreground=self.COLORS["text"])
+        self.toggle_entry.config(font=(self.FONT_FAMILY, 10))
+        self._hide_placeholder(self.toggle_entry)
+
+    def _get_key_entry_value(self, entry, placeholder):
+        value = entry.get().strip()
+        if not value or value.upper() == placeholder.upper():
+            return ""
+        return value.upper()
+
     @staticmethod
     def _sync_scrollbar(scrollbar, first, last):
         if float(first) <= 0 and float(last) >= 1:
@@ -417,15 +670,15 @@ class DiabloToolkitApp:
                 page_frame.grid_remove()
 
         if page == "camera":
-            self.nav_camera.configure(style="ActiveNav.TButton")
-            self.nav_autokey.configure(style="Nav.TButton")
+            self.nav_camera.configure(bg=self.COLORS["surface"], fg=self.COLORS["gold"], activebackground=self.COLORS["surface"], activeforeground=self.COLORS["gold"], font=self.emoji_font)
+            self.nav_autokey.configure(bg=self.COLORS["background"], fg=self.COLORS["muted"], activebackground=self.COLORS["surface_alt"], activeforeground=self.COLORS["text"], font=self.emoji_font)
         else:
-            self.nav_autokey.configure(style="ActiveNav.TButton")
-            self.nav_camera.configure(style="Nav.TButton")
+            self.nav_autokey.configure(bg=self.COLORS["surface"], fg=self.COLORS["gold"], activebackground=self.COLORS["surface"], activeforeground=self.COLORS["gold"], font=self.emoji_font)
+            self.nav_camera.configure(bg=self.COLORS["background"], fg=self.COLORS["muted"], activebackground=self.COLORS["surface_alt"], activeforeground=self.COLORS["text"], font=self.emoji_font)
 
     def _build_autokey_tab(self):
         frame = self.tab_autokey
-        ttk.Label(frame, text="AUTOKEYER", style="Title.TLabel").pack(anchor=tk.W)
+        ttk.Label(frame, text="KEYFORGE ⚒️", style="Title.TLabel").pack(anchor=tk.W)
         ttk.Label(
             frame,
             text="Repeat selected keys at your preferred interval.",
@@ -460,7 +713,15 @@ class DiabloToolkitApp:
                 justify="center",
                 font=(self.FONT_FAMILY, 13),
             )
+            self._apply_pointer_cursor(entry)
             entry.pack()
+            entry.bind(
+                "<FocusIn>",
+                lambda _event, target=entry: self._start_key_capture(
+                    target, "Press a key"
+                ),
+            )
+            entry.bind("<FocusOut>", self._clear_key_capture)
             self.key_entries.append(entry)
 
         toggle_card = ttk.Frame(frame, style="Surface.TFrame", padding=18)
@@ -475,9 +736,23 @@ class DiabloToolkitApp:
             text="Start or pause the AutoKeyer",
             style="Muted.Surface.TLabel",
         ).pack(side=tk.LEFT, fill=tk.X, expand=True)
-        self.toggle_entry = ttk.Entry(toggle_row, width=12, justify="center")
+        self.toggle_entry = ttk.Entry(
+            toggle_row,
+            width=12,
+            justify="center",
+            font=(self.FONT_FAMILY, 10),
+        )
+        self._apply_pointer_cursor(self.toggle_entry)
         self.toggle_entry.insert(0, self.current_toggle_key.upper())
+        self.toggle_entry.config(foreground=self.COLORS["text"])
         self.toggle_entry.pack(side=tk.RIGHT)
+        self.toggle_entry.bind(
+            "<FocusIn>",
+            lambda _event, target=self.toggle_entry: self._start_key_capture(
+                target, "Press F1-F12", [f"F{i}" for i in range(1, 13)]
+            ),
+        )
+        self.toggle_entry.bind("<FocusOut>", self._clear_key_capture)
 
         interval_row = ttk.Frame(toggle_card, style="Surface.TFrame")
         interval_row.pack(fill=tk.X, pady=(14, 0))
@@ -490,12 +765,12 @@ class DiabloToolkitApp:
         ).pack(anchor=tk.W)
         ttk.Label(
             interval_text,
-            text="From 10 to 5000 milliseconds",
+            text="From 100 to 5000 milliseconds",
             style="Muted.Surface.TLabel",
         ).pack(anchor=tk.W, pady=(2, 0))
         self.interval_entry = ttk.Spinbox(
             interval_row,
-            from_=self.autokey.MIN_INTERVAL_MS,
+            from_=100,
             to=self.autokey.MAX_INTERVAL_MS,
             increment=10,
             width=9,
@@ -503,6 +778,15 @@ class DiabloToolkitApp:
         )
         self.interval_entry.set(str(self.autokey.interval_ms))
         self.interval_entry.pack(side=tk.RIGHT)
+
+        self.clear_inputs_button = ttk.Button(
+            frame,
+            text="CLEAR INPUTS",
+            style="TButton",
+            command=self.clear_all_key_inputs,
+        )
+        self._apply_pointer_cursor(self.clear_inputs_button)
+        self.clear_inputs_button.pack(anchor=tk.W, pady=(12, 0))
 
         action_row = ttk.Frame(frame)
         action_row.pack(fill=tk.X, pady=(4, 0))
@@ -514,16 +798,26 @@ class DiabloToolkitApp:
             font=(self.FONT_FAMILY, 10, "bold"),
         )
         self.lbl_ak_status.pack(side=tk.LEFT, pady=8)
-        ttk.Button(
+        self.save_status_label = tk.Label(
+            action_row,
+            text="",
+            bg=self.COLORS["background"],
+            fg=self.COLORS["green"],
+            font=(self.FONT_FAMILY, 9, "bold"),
+        )
+        self.save_status_label.pack(side=tk.LEFT, padx=(12, 0), pady=8)
+        save_settings_button = ttk.Button(
             action_row,
             text="SAVE SETTINGS",
             style="Accent.TButton",
             command=self.apply_autokey,
-        ).pack(side=tk.RIGHT)
+        )
+        self._apply_pointer_cursor(save_settings_button)
+        save_settings_button.pack(side=tk.RIGHT)
 
     def _build_camera_tab(self):
         frame = self.tab_camera
-        ttk.Label(frame, text="CAMERA", style="Title.TLabel").pack(anchor=tk.W)
+        ttk.Label(frame, text="ZoomSettings 📷", style="Title.TLabel").pack(anchor=tk.W)
         ttk.Label(
             frame,
             text="Adjust the camera framing and distance.",
@@ -556,6 +850,7 @@ class DiabloToolkitApp:
             style="Accent.TButton",
             command=self.attach_and_scan,
         )
+        self._apply_pointer_cursor(self.attach_button)
         self.attach_button.pack(side=tk.RIGHT, padx=(12, 0))
 
         preset_card = ttk.Frame(frame, style="Surface.TFrame", padding=15)
@@ -565,16 +860,11 @@ class DiabloToolkitApp:
         )
         preset_row = ttk.Frame(preset_card, style="Surface.TFrame")
         preset_row.pack(fill=tk.X, pady=(9, 0))
-        self.combo_presets = ttk.Combobox(preset_row, state="readonly")
+        self.combo_presets = ttk.Combobox(preset_row, state="disabled")
         self.combo_presets.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        self.apply_preset_button = ttk.Button(
-            preset_row,
-            text="APPLY",
-            command=self.apply_preset,
-            state=tk.DISABLED,
-        )
-        self.apply_preset_button.pack(side=tk.RIGHT, padx=(9, 0))
-
+        self._apply_pointer_cursor(self.combo_presets)
+        self.combo_presets.bind("<Button-1>", lambda _event: self.combo_presets.selection_clear())
+        self.combo_presets.bind("<<ComboboxSelected>>", self._on_preset_selected)
         controls_card = ttk.Frame(frame, style="Surface.TFrame", padding=15)
         controls_card.pack(fill=tk.BOTH, expand=True)
         ttk.Label(
@@ -632,6 +922,104 @@ class DiabloToolkitApp:
             slider.state(["disabled"])
             self.camera_controls.append(slider)
 
+        self.save_camera_button = ttk.Button(
+            controls_card,
+            text="Save Settings",
+            command=self.save_camera_settings,
+            state=tk.DISABLED,
+        )
+        self._apply_pointer_cursor(self.save_camera_button)
+        self.save_camera_button.pack(anchor=tk.E, pady=(12, 0))
+        self.cam_save_status = tk.Label(
+            controls_card,
+            text="",
+            bg=self.COLORS["surface"],
+            fg=self.COLORS["green"],
+            font=(self.FONT_FAMILY, 9, "bold"),
+        )
+        self.cam_save_status.pack(anchor=tk.E, pady=(6, 0))
+
+    def _load_saved_settings(self):
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Diablo IV Toolkit") as key:
+                try:
+                    interval = winreg.QueryValueEx(key, "interval_ms")[0]
+                    interval = int(interval)
+                    self.autokey.set_interval(interval)
+                    self.interval_entry.set(str(interval))
+                except FileNotFoundError:
+                    pass
+
+                for index, entry in enumerate(self.key_entries, start=1):
+                    try:
+                        value = winreg.QueryValueEx(key, f"slot_{index}")[0]
+                    except FileNotFoundError:
+                        continue
+                    value = str(value).strip()
+                    if value:
+                        entry.delete(0, tk.END)
+                        entry.insert(0, value.upper())
+                        entry.config(foreground=self.COLORS["text"])
+
+                try:
+                    toggle_key = str(winreg.QueryValueEx(key, "toggle_key")[0]).strip()
+                except FileNotFoundError:
+                    toggle_key = ""
+                if toggle_key:
+                    self.current_toggle_key = toggle_key.lower()
+                    self.toggle_entry.delete(0, tk.END)
+                    self.toggle_entry.insert(0, self.current_toggle_key.upper())
+                    self.toggle_entry.config(foreground=self.COLORS["text"])
+
+                try:
+                    values = winreg.QueryValueEx(key, "camera_values")[0]
+                    if isinstance(values, str):
+                        data = json.loads(values)
+                        for name, value in data.items():
+                            self._apply_camera_slider_value(name, value)
+                except FileNotFoundError:
+                    pass
+
+                try:
+                    preset_name = str(winreg.QueryValueEx(key, "camera_preset")[0])
+                    if preset_name and preset_name in self.presets:
+                        self.combo_presets.set(preset_name)
+                except FileNotFoundError:
+                    pass
+        except FileNotFoundError:
+            return
+
+    def _apply_camera_slider_value(self, name, value):
+        if name not in self.sliders:
+            return
+        value = float(value)
+        self.sliders[name].set(value)
+        self.slider_value_labels[name].config(text=f"{value:.2f}")
+
+    def _save_settings(self, interval_ms, keys, toggle_key):
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Diablo IV Toolkit") as key:
+            winreg.SetValueEx(key, "interval_ms", 0, winreg.REG_DWORD, int(interval_ms))
+            winreg.SetValueEx(key, "toggle_key", 0, winreg.REG_SZ, str(toggle_key).upper())
+            for index, key_value in enumerate(keys, start=1):
+                winreg.SetValueEx(key, f"slot_{index}", 0, winreg.REG_SZ, str(key_value).upper())
+
+    def _save_camera_values(self):
+        values = {}
+        for name, variable in self.sliders.items():
+            values[name] = float(variable.get())
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Diablo IV Toolkit") as key:
+            winreg.SetValueEx(key, "camera_values", 0, winreg.REG_SZ, json.dumps(values))
+            current = self.combo_presets.get()
+            if current:
+                winreg.SetValueEx(key, "camera_preset", 0, winreg.REG_SZ, str(current))
+
+    def _on_preset_selected(self, _event=None):
+        if self._applying_preset or not self.camera.is_attached:
+            return
+        selected = self.combo_presets.get()
+        if selected and selected != "Custom":
+            self.apply_preset()
+
     def _load_presets(self):
         preset_path = Path(__file__).resolve().parents[1] / "core" / "DiabloCameraPresets.json"
         try:
@@ -646,7 +1034,10 @@ class DiabloToolkitApp:
 
         for preset in data.get("presets", []):
             self.presets[preset["name"]] = preset["values"]
-        self.combo_presets["values"] = list(self.presets.keys())
+        preset_names = list(self.presets.keys())
+        if "Custom" not in preset_names:
+            preset_names.insert(0, "Custom")
+        self.combo_presets["values"] = preset_names
         if self.presets:
             self.combo_presets.current(0)
 
@@ -663,17 +1054,17 @@ class DiabloToolkitApp:
             self.interval_entry.focus_set()
             return
 
-        keys = [entry.get() for entry in self.key_entries]
+        keys = [self._get_key_entry_value(entry, "Press a key") for entry in self.key_entries]
         self.autokey.set_keys(keys)
-        new_toggle = self.toggle_entry.get().lower().strip()
+        new_toggle = self._get_key_entry_value(self.toggle_entry, "Press F1-F12").lower()
+        if not new_toggle:
+            new_toggle = self.current_toggle_key
         if new_toggle and new_toggle != self.current_toggle_key:
             self.current_toggle_key = new_toggle
             self._register_hotkey()
-        messagebox.showinfo(
-            "Settings saved",
-            f"Settings applied. Interval: {interval_ms} ms.",
-            parent=self.root,
-        )
+        self._save_settings(interval_ms, keys, self.current_toggle_key)
+        self.save_status_label.config(text="Saved")
+        self.root.after(5000, lambda: self.save_status_label.config(text=""))
 
     def _register_hotkey(self):
         keyboard.unhook_all()
@@ -721,8 +1112,8 @@ class DiabloToolkitApp:
         self.attach_button.config(state=tk.DISABLED, text="CONNECTED")
         for control in self.camera_controls:
             control.state(["!disabled"])
-        if self.presets:
-            self.apply_preset_button.config(state=tk.NORMAL)
+        self.save_camera_button.config(state=tk.NORMAL)
+        self.combo_presets.config(state="readonly")
         self.root.after(500, self._monitor_camera_writer)
 
     def _monitor_camera_writer(self):
@@ -738,25 +1129,51 @@ class DiabloToolkitApp:
     def _scan_error(self, error):
         self._set_camera_status(str(error), self.COLORS["red_hover"])
         self.attach_button.config(state=tk.NORMAL, text="TRY AGAIN")
+        self.combo_presets.config(state="disabled")
+        self.save_camera_button.config(state=tk.DISABLED)
 
     def _set_camera_status(self, text, color):
         self.lbl_cam_status.config(text=text, fg=color)
 
     def update_camera(self, name, value):
+        value = float(value)
+        if name in self.slider_value_labels:
+            self.slider_value_labels[name].config(text=f"{value:.2f}")
         try:
             self.camera.write_camera_value(name, value)
         except CameraPatcherError as error:
             self._set_camera_status(str(error), self.COLORS["red_hover"])
+        if self._applying_preset or not self.camera.is_attached:
+            return
+        current = self.combo_presets.get()
+        if current and current != "Custom" and current not in {"", None}:
+            self._set_custom_preset()
+
+    def _set_custom_preset(self):
+        values = list(self.combo_presets["values"]) if self.combo_presets["values"] else []
+        if "Custom" not in values:
+            values.insert(0, "Custom")
+            self.combo_presets["values"] = values
+        self.combo_presets.set("Custom")
+
+    def save_camera_settings(self):
+        self._save_camera_values()
+        self.cam_save_status.config(text="Saved")
+        self.root.after(5000, lambda: self.cam_save_status.config(text=""))
 
     def apply_preset(self):
         selected = self.combo_presets.get()
         if selected in self.presets:
-            values = self.presets[selected]
-            for key, value in values.items():
-                if key in self.sliders:
-                    self.sliders[key].set(value)
-                    self.slider_value_labels[key].config(text=f"{float(value):.2f}")
-                    self.update_camera(key, value)
+            self._applying_preset = True
+            try:
+                values = self.presets[selected]
+                for key, value in values.items():
+                    if key in self.sliders:
+                        self.sliders[key].set(value)
+                        self.slider_value_labels[key].config(text=f"{float(value):.2f}")
+                        self.update_camera(key, value)
+            finally:
+                self._applying_preset = False
 
     def open_donation_page(self):
         if not webbrowser.open_new_tab("https://buymeacoffee.com/kren"):
