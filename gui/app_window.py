@@ -508,10 +508,18 @@ class DiabloToolkitApp:
             return
 
         keysym = event.keysym.upper()
-        if keysym in {"SHIFT_L", "SHIFT_R", "CONTROL_L", "CONTROL_R", "ALT_L", "ALT_R", "TAB", "ESCAPE", "CAPS_LOCK", "ENTER", "BACKSPACE", "DELETE", "UP", "DOWN", "LEFT", "RIGHT", "HOME", "END", "PAGE_UP", "PAGE_DOWN", "INSERT"}:
+        entry = self._key_capture_entry
+
+        if keysym == "BACKSPACE":
+            entry.delete(0, tk.END)
+            entry.config(foreground=self.COLORS["muted"])
+            self._show_placeholder(entry, self._key_capture_placeholder)
+            self._clear_key_capture()
             return "break"
 
-        entry = self._key_capture_entry
+        if keysym in {"SHIFT_L", "SHIFT_R", "CONTROL_L", "CONTROL_R", "ALT_L", "ALT_R", "TAB", "ESCAPE", "CAPS_LOCK", "ENTER", "DELETE", "UP", "DOWN", "LEFT", "RIGHT", "HOME", "END", "PAGE_UP", "PAGE_DOWN", "INSERT"}:
+            return "break"
+
         allowed = self._key_capture_allowed_keys
         if allowed is not None:
             if keysym not in allowed:
