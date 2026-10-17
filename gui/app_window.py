@@ -101,6 +101,19 @@ class DiabloToolkitApp:
         self.root.geometry(f"{width}x{height}+{x}+{y}")
         self.root.minsize(min(720, screen_width), min(580, screen_height))
         self.root.configure(bg=self.COLORS["background"])
+        self._configure_window_icon()
+
+    def _configure_window_icon(self):
+        logo_path = Path(__file__).resolve().parents[1] / "assets" / "images" / "logo.png"
+        if not logo_path.is_file():
+            return
+
+        try:
+            self.window_icon = tk.PhotoImage(file=str(logo_path))
+            self.root.iconphoto(True, self.window_icon)
+            self.root.wm_iconphoto(True, self.window_icon)
+        except tk.TclError:
+            pass
 
     def _configure_styles(self):
         style = ttk.Style(self.root)
@@ -266,10 +279,13 @@ class DiabloToolkitApp:
         container.columnconfigure(1, weight=1)
         container.rowconfigure(0, weight=1)
 
-        sidebar = ttk.Frame(container, style="TFrame", padding=(16, 22, 12, 18))
-        sidebar.grid(row=0, column=0, sticky="ns")
-        tk.Frame(sidebar, bg=self.COLORS["border"], width=1).place(
-            relx=1, rely=0, relheight=1, anchor="ne"
+        sidebar_wrapper = ttk.Frame(container, style="TFrame")
+        sidebar_wrapper.grid(row=0, column=0, sticky="ns")
+
+        sidebar = ttk.Frame(sidebar_wrapper, style="TFrame", padding=(16, 22, 12, 18))
+        sidebar.pack(side=tk.LEFT, fill=tk.Y)
+        tk.Frame(sidebar_wrapper, bg=self.COLORS["border"], width=1).pack(
+            side=tk.LEFT, fill=tk.Y
         )
 
         logo_path = Path(__file__).resolve().parents[1] / "assets" / "images" / "logo.png"
