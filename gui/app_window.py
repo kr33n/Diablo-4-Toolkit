@@ -47,7 +47,6 @@ class DiabloToolkitApp:
         self._key_capture_placeholder = ""
         self._tooltip_window = None
         self._placeholder_label_map = {}
-        self.root.bind("<KeyPress>", self._handle_key_capture)
 
         self._load_application_font()
         self._configure_window()
@@ -466,9 +465,12 @@ class DiabloToolkitApp:
         return inner
 
     def _start_key_capture(self, entry, placeholder, allowed_keys=None):
+        self._clear_key_capture()
         self._key_capture_entry = entry
         self._key_capture_allowed_keys = allowed_keys
         self._key_capture_placeholder = placeholder
+        entry.unbind("<KeyPress>")
+        entry.bind("<KeyPress>", self._handle_key_capture)
         if entry.get().strip() == "":
             self._show_placeholder(entry, placeholder)
         else:
@@ -505,7 +507,7 @@ class DiabloToolkitApp:
 
     def _handle_key_capture(self, event):
         if not hasattr(self, "_key_capture_entry") or self._key_capture_entry is None:
-            return
+            return "break"
 
         keysym = event.keysym.upper()
         entry = self._key_capture_entry
