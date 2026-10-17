@@ -1,7 +1,10 @@
+import ctypes
 import json
 import threading
 import tkinter as tk
+import webbrowser
 from pathlib import Path
+from ctypes import wintypes
 from tkinter import messagebox, ttk
 
 import keyboard
@@ -10,6 +13,9 @@ from core.camera_patcher import CameraPatcherError
 
 
 class DiabloToolkitApp:
+    FONT_FAMILY = "Roboto"
+    PRIVATE_FONT_FLAG = 0x10
+
     COLORS = {
         "background": "#111214",
         "surface": "#1a1b1f",
@@ -32,7 +38,10 @@ class DiabloToolkitApp:
         self.presets = {}
         self.camera_controls = []
         self.slider_value_labels = {}
+        self._wheel_remainder = 0
+        self.pages = {}
 
+        self._load_application_font()
         self._configure_window()
         self._configure_styles()
         self._build_layout()
@@ -41,10 +50,56 @@ class DiabloToolkitApp:
 
         self.root.protocol("WM_DELETE_WINDOW", self.on_close)
 
+    def _load_application_font(self):
+        font_path = (
+            Path(__file__).resolve().parents[1]
+            / "assets"
+            / "fonts"
+            / "Roboto-Variable.ttf"
+        )
+        if not font_path.is_file():
+            raise FileNotFoundError(f"Bundled Roboto font not found: {font_path}")
+
+        self._font_api = ctypes.WinDLL("gdi32", use_last_error=True)
+        self._font_api.AddFontResourceExW.argtypes = [
+            wintypes.LPCWSTR,
+            wintypes.DWORD,
+            wintypes.LPVOID,
+        ]
+        self._font_api.AddFontResourceExW.restype = wintypes.INT
+        self._font_api.RemoveFontResourceExW.argtypes = [
+            wintypes.LPCWSTR,
+            wintypes.DWORD,
+            wintypes.LPVOID,
+        ]
+        self._font_api.RemoveFontResourceExW.restype = wintypes.BOOL
+
+        self._font_path = str(font_path)
+        if not self._font_api.AddFontResourceExW(
+            self._font_path, self.PRIVATE_FONT_FLAG, None
+        ):
+            error = ctypes.get_last_error()
+            raise OSError(error, f"Could not load bundled Roboto font: {font_path}")
+
+        available_fonts = self.root.tk.call("font", "families")
+        if self.FONT_FAMILY not in available_fonts:
+            self._font_api.RemoveFontResourceExW(
+                self._font_path, self.PRIVATE_FONT_FLAG, None
+            )
+            raise RuntimeError("Roboto was loaded but is unavailable to Tk.")
+
     def _configure_window(self):
-        self.root.title("Diablo IV")
-        self.root.geometry("760x650")
-        self.root.minsize(680, 590)
+        self.root.title("Diablo IV Toolkit")
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+        width = min(1120, max(760, screen_width - 80))
+        height = min(860, max(620, screen_height - 100))
+        width = min(width, screen_width)
+        height = min(height, screen_height)
+        x = max(0, (screen_width - width) // 2)
+        y = max(0, (screen_height - height) // 2)
+        self.root.geometry(f"{width}x{height}+{x}+{y}")
+        self.root.minsize(min(720, screen_width), min(580, screen_height))
         self.root.configure(bg=self.COLORS["background"])
 
     def _configure_styles(self):
@@ -58,68 +113,49 @@ class DiabloToolkitApp:
             "TLabel",
             background=self.COLORS["background"],
             foreground=self.COLORS["text"],
-            font=("Segoe UI", 10),
+            font=(self.FONT_FAMILY, 10),
         )
         style.configure(
             "Surface.TLabel",
             background=self.COLORS["surface"],
             foreground=self.COLORS["text"],
-            font=("Segoe UI", 10),
+            font=(self.FONT_FAMILY, 10),
         )
         style.configure(
             "Inset.TLabel",
             background=self.COLORS["surface_alt"],
             foreground=self.COLORS["text"],
-            font=("Segoe UI", 10),
+            font=(self.FONT_FAMILY, 10),
         )
         style.configure(
             "Title.TLabel",
             background=self.COLORS["background"],
             foreground=self.COLORS["text"],
-            font=("Segoe UI Semibold", 20),
+            font=(self.FONT_FAMILY, 20, "bold"),
         )
         style.configure(
             "Subtitle.TLabel",
             background=self.COLORS["background"],
             foreground=self.COLORS["muted"],
-            font=("Segoe UI", 9),
+            font=(self.FONT_FAMILY, 9),
         )
         style.configure(
             "Section.TLabel",
             background=self.COLORS["surface"],
             foreground=self.COLORS["gold"],
-            font=("Segoe UI Semibold", 11),
+            font=(self.FONT_FAMILY, 11, "bold"),
         )
         style.configure(
             "Muted.Surface.TLabel",
             background=self.COLORS["surface"],
             foreground=self.COLORS["muted"],
-            font=("Segoe UI", 9),
+            font=(self.FONT_FAMILY, 9),
         )
         style.configure(
             "Value.Surface.TLabel",
             background=self.COLORS["surface"],
             foreground=self.COLORS["gold"],
-            font=("Consolas", 10, "bold"),
-        )
-        style.configure(
-            "TNotebook",
-            background=self.COLORS["background"],
-            borderwidth=0,
-            tabmargins=(0, 0, 0, 0),
-        )
-        style.configure(
-            "TNotebook.Tab",
-            background=self.COLORS["surface_alt"],
-            foreground=self.COLORS["muted"],
-            padding=(18, 11),
-            font=("Segoe UI Semibold", 10),
-            borderwidth=0,
-        )
-        style.map(
-            "TNotebook.Tab",
-            background=[("selected", self.COLORS["red"])],
-            foreground=[("selected", self.COLORS["text"])],
+            font=(self.FONT_FAMILY, 10, "bold"),
         )
         style.configure(
             "TButton",
@@ -128,7 +164,7 @@ class DiabloToolkitApp:
             padding=(13, 9),
             borderwidth=1,
             relief="flat",
-            font=("Segoe UI Semibold", 9),
+            font=(self.FONT_FAMILY, 9, "bold"),
         )
         style.map(
             "TButton",
@@ -144,7 +180,7 @@ class DiabloToolkitApp:
             foreground=self.COLORS["text"],
             padding=(15, 10),
             borderwidth=0,
-            font=("Segoe UI Semibold", 9),
+            font=(self.FONT_FAMILY, 9, "bold"),
         )
         style.map(
             "Accent.TButton",
@@ -159,6 +195,7 @@ class DiabloToolkitApp:
             fieldbackground=self.COLORS["surface_alt"],
             foreground=self.COLORS["text"],
             insertcolor=self.COLORS["text"],
+            font=(self.FONT_FAMILY, 10),
             padding=7,
             borderwidth=1,
             relief="flat",
@@ -169,6 +206,7 @@ class DiabloToolkitApp:
             background=self.COLORS["surface_alt"],
             foreground=self.COLORS["text"],
             arrowcolor=self.COLORS["gold"],
+            font=(self.FONT_FAMILY, 10),
             padding=7,
             borderwidth=1,
         )
@@ -178,71 +216,230 @@ class DiabloToolkitApp:
             foreground=[("readonly", self.COLORS["text"])],
         )
         style.configure(
+            "TSpinbox",
+            fieldbackground=self.COLORS["surface_alt"],
+            foreground=self.COLORS["text"],
+            arrowcolor=self.COLORS["gold"],
+            font=(self.FONT_FAMILY, 10),
+            padding=7,
+        )
+        style.configure(
             "Horizontal.TScale",
             background=self.COLORS["surface"],
             troughcolor=self.COLORS["surface_alt"],
             sliderthickness=15,
         )
-
-    def _build_layout(self):
-        container = ttk.Frame(self.root, padding=(26, 20, 26, 20))
-        container.pack(fill=tk.BOTH, expand=True)
-
-        header = ttk.Frame(container)
-        header.pack(fill=tk.X, pady=(0, 18))
-
-        brand = ttk.Frame(header)
-        brand.pack(side=tk.LEFT, fill=tk.X, expand=True)
-        ttk.Label(brand, text="DIABLO IV", style="Title.TLabel").pack(anchor=tk.W)
-        ttk.Label(
-            brand,
-            text="TOOLKIT  /  UTILITÁRIOS DE JOGO",
-            style="Subtitle.TLabel",
-        ).pack(anchor=tk.W, pady=(2, 0))
-        tk.Frame(header, bg=self.COLORS["red"], width=4, height=48).pack(
-            side=tk.RIGHT, padx=(16, 2), pady=3
+        style.configure(
+            "Nav.TButton",
+            background=self.COLORS["background"],
+            foreground=self.COLORS["muted"],
+            padding=(16, 13),
+            anchor=tk.W,
+            borderwidth=0,
+            font=(self.FONT_FAMILY, 10, "bold"),
+        )
+        style.map(
+            "Nav.TButton",
+            background=[("active", self.COLORS["surface_alt"])],
+            foreground=[("active", self.COLORS["text"])],
+        )
+        style.configure(
+            "ActiveNav.TButton",
+            background=self.COLORS["surface"],
+            foreground=self.COLORS["gold"],
+            padding=(16, 13),
+            anchor=tk.W,
+            borderwidth=0,
+            font=(self.FONT_FAMILY, 10, "bold"),
+        )
+        style.configure(
+            "Vertical.TScrollbar",
+            background=self.COLORS["surface_alt"],
+            troughcolor=self.COLORS["background"],
+            bordercolor=self.COLORS["background"],
+            arrowcolor=self.COLORS["muted"],
         )
 
-        self.notebook = ttk.Notebook(container)
-        self.notebook.pack(fill=tk.BOTH, expand=True)
-        self.tab_autokey = ttk.Frame(self.notebook, padding=18)
-        self.tab_camera = ttk.Frame(self.notebook, padding=18)
-        self.notebook.add(self.tab_autokey, text="AUTOKEY")
-        self.notebook.add(self.tab_camera, text="CÂMERA")
+    def _build_layout(self):
+        container = ttk.Frame(self.root)
+        container.pack(fill=tk.BOTH, expand=True)
+        container.columnconfigure(1, weight=1)
+        container.rowconfigure(0, weight=1)
+
+        sidebar = ttk.Frame(container, style="TFrame", padding=(16, 22, 12, 18))
+        sidebar.grid(row=0, column=0, sticky="ns")
+        tk.Frame(sidebar, bg=self.COLORS["border"], width=1).place(
+            relx=1, rely=0, relheight=1, anchor="ne"
+        )
+
+        logo_path = Path(__file__).resolve().parents[1] / "assets" / "images" / "logo.png"
+        self.logo_image = tk.PhotoImage(file=str(logo_path)).subsample(4, 4)
+        ttk.Label(
+            sidebar,
+            image=self.logo_image,
+            background=self.COLORS["background"],
+        ).pack(anchor=tk.CENTER, pady=(0, 24))
+
+        ttk.Label(sidebar, text="TOOLS", style="Subtitle.TLabel").pack(
+            anchor=tk.W, padx=(12, 0), pady=(0, 8)
+        )
+        self.nav_autokey = ttk.Button(
+            sidebar,
+            text="⌨   AutoKey",
+            style="ActiveNav.TButton",
+            command=lambda: self._show_page("autokey"),
+        )
+        self.nav_autokey.pack(fill=tk.X, pady=2)
+        self.nav_camera = ttk.Button(
+            sidebar,
+            text="◉   Camera",
+            style="Nav.TButton",
+            command=lambda: self._show_page("camera"),
+        )
+        self.nav_camera.pack(fill=tk.X, pady=2)
+
+        ttk.Frame(sidebar).pack(fill=tk.BOTH, expand=True)
+        ttk.Button(
+            sidebar,
+            text="☕  Buy me a coffee",
+            style="Accent.TButton",
+            command=self.open_donation_page,
+        ).pack(fill=tk.X, padx=4, pady=(0, 12))
+        tk.Frame(sidebar, bg=self.COLORS["red"], height=2).pack(fill=tk.X, pady=(8, 12))
+        ttk.Label(
+            sidebar,
+            text="DIABLO IV\nGAME TOOLKIT",
+            style="Subtitle.TLabel",
+            justify=tk.LEFT,
+        ).pack(anchor=tk.W, padx=(12, 0))
+
+        main_area = ttk.Frame(container, padding=(24, 20, 20, 12))
+        main_area.grid(row=0, column=1, sticky="nsew")
+        main_area.columnconfigure(0, weight=1)
+        main_area.rowconfigure(0, weight=1)
+        self.content_area = ttk.Frame(main_area)
+        self.content_area.grid(row=0, column=0, sticky="nsew")
+        self.content_area.columnconfigure(0, weight=1)
+        self.content_area.rowconfigure(0, weight=1)
+
+        self.tab_autokey = self._create_scrollable_page("autokey")
+        self.tab_camera = self._create_scrollable_page("camera")
 
         self._build_autokey_tab()
         self._build_camera_tab()
+        ttk.Label(
+            main_area,
+            text="DIABLO IV TOOLKIT   •   Use responsibly",
+            style="Subtitle.TLabel",
+        ).grid(row=1, column=0, sticky="e", pady=(8, 0))
+        self._show_page("autokey")
 
-        footer = ttk.Frame(container)
-        footer.pack(fill=tk.X, pady=(12, 0))
-        ttk.Label(
-            footer,
-            text="DIABLO IV TOOLKIT",
-            style="Subtitle.TLabel",
-        ).pack(side=tk.LEFT)
-        ttk.Label(
-            footer,
-            text="Use com responsabilidade",
-            style="Subtitle.TLabel",
-        ).pack(side=tk.RIGHT)
+    def _create_scrollable_page(self, name):
+        page = ttk.Frame(self.content_area)
+        page.grid(row=0, column=0, sticky="nsew")
+        self.pages[name] = page
+        page.columnconfigure(0, weight=1)
+        page.rowconfigure(0, weight=1)
+        canvas = tk.Canvas(
+            page,
+            bg=self.COLORS["background"],
+            highlightthickness=0,
+            borderwidth=0,
+        )
+        scrollbar = ttk.Scrollbar(
+            page,
+            orient=tk.VERTICAL,
+            command=canvas.yview,
+            style="Vertical.TScrollbar",
+        )
+        canvas.configure(
+            yscrollcommand=lambda first, last: self._sync_scrollbar(
+                scrollbar, first, last
+            )
+        )
+        canvas.grid(row=0, column=0, sticky="nsew")
+        scrollbar.grid(row=0, column=1, sticky="ns")
+        inner = ttk.Frame(canvas, padding=(2, 2, 16, 12))
+        window_id = canvas.create_window((0, 0), window=inner, anchor="nw")
+
+        inner.bind(
+            "<Configure>",
+            lambda _event, target=canvas: target.configure(
+                scrollregion=target.bbox("all")
+            ),
+        )
+        canvas.bind(
+            "<Configure>",
+            lambda event, target=canvas, item=window_id: target.itemconfigure(
+                item, width=event.width
+            ),
+        )
+        canvas.bind(
+            "<Enter>",
+            lambda _event, target=canvas: self._enable_mousewheel(target),
+        )
+        canvas.bind("<Leave>", lambda _event: self._disable_mousewheel())
+        setattr(self, f"{name}_canvas", canvas)
+        return inner
+
+    @staticmethod
+    def _sync_scrollbar(scrollbar, first, last):
+        if float(first) <= 0 and float(last) >= 1:
+            scrollbar.grid_remove()
+        else:
+            scrollbar.grid()
+        scrollbar.set(first, last)
+
+    def _enable_mousewheel(self, canvas):
+        self.root.bind_all(
+            "<MouseWheel>",
+            lambda event, target=canvas: self._on_mousewheel(event, target),
+        )
+
+    def _on_mousewheel(self, event, canvas):
+        self._wheel_remainder += event.delta
+        units = int(-self._wheel_remainder / 120)
+        if units:
+            canvas.yview_scroll(units, "units")
+            self._wheel_remainder += units * 120
+
+    def _disable_mousewheel(self):
+        self.root.unbind_all("<MouseWheel>")
+
+    def _show_page(self, page):
+        if page not in self.pages:
+            raise ValueError(f"Unknown application page: {page}")
+
+        for name, page_frame in self.pages.items():
+            if name == page:
+                page_frame.grid()
+            else:
+                page_frame.grid_remove()
+
+        if page == "camera":
+            self.nav_camera.configure(style="ActiveNav.TButton")
+            self.nav_autokey.configure(style="Nav.TButton")
+        else:
+            self.nav_autokey.configure(style="ActiveNav.TButton")
+            self.nav_camera.configure(style="Nav.TButton")
 
     def _build_autokey_tab(self):
         frame = self.tab_autokey
         ttk.Label(frame, text="AUTOKEYER", style="Title.TLabel").pack(anchor=tk.W)
         ttk.Label(
             frame,
-            text="Mantenha suas teclas selecionadas ativas enquanto joga.",
+            text="Repeat selected keys at your preferred interval.",
             style="Subtitle.TLabel",
         ).pack(anchor=tk.W, pady=(3, 18))
 
         keys_card = ttk.Frame(frame, style="Surface.TFrame", padding=18)
         keys_card.pack(fill=tk.X, pady=(0, 12))
-        ttk.Label(keys_card, text="TECLAS ATIVAS", style="Section.TLabel").pack(
+        ttk.Label(keys_card, text="KEYS TO REPEAT", style="Section.TLabel").pack(
             anchor=tk.W
         )
         ttk.Label(
             keys_card,
-            text="Deixe em branco os espaços que não quiser usar.",
+            text="Leave unused slots blank.",
             style="Muted.Surface.TLabel",
         ).pack(anchor=tk.W, pady=(3, 13))
 
@@ -257,49 +454,79 @@ class DiabloToolkitApp:
                 text=f"SLOT {index + 1}",
                 style="Muted.Surface.TLabel",
             ).pack(anchor=tk.CENTER, pady=(0, 5))
-            entry = ttk.Entry(slot, width=7, justify="center", font=("Segoe UI", 13))
+            entry = ttk.Entry(
+                slot,
+                width=7,
+                justify="center",
+                font=(self.FONT_FAMILY, 13),
+            )
             entry.pack()
             self.key_entries.append(entry)
 
         toggle_card = ttk.Frame(frame, style="Surface.TFrame", padding=18)
         toggle_card.pack(fill=tk.X, pady=(0, 12))
-        ttk.Label(toggle_card, text="TECLA DE ATIVAÇÃO", style="Section.TLabel").pack(
+        ttk.Label(toggle_card, text="TOGGLE HOTKEY", style="Section.TLabel").pack(
             anchor=tk.W
         )
         toggle_row = ttk.Frame(toggle_card, style="Surface.TFrame")
         toggle_row.pack(fill=tk.X, pady=(10, 0))
         ttk.Label(
             toggle_row,
-            text="Ativar ou pausar o AutoKeyer",
+            text="Start or pause the AutoKeyer",
             style="Muted.Surface.TLabel",
         ).pack(side=tk.LEFT, fill=tk.X, expand=True)
         self.toggle_entry = ttk.Entry(toggle_row, width=12, justify="center")
         self.toggle_entry.insert(0, self.current_toggle_key.upper())
         self.toggle_entry.pack(side=tk.RIGHT)
 
+        interval_row = ttk.Frame(toggle_card, style="Surface.TFrame")
+        interval_row.pack(fill=tk.X, pady=(14, 0))
+        interval_text = ttk.Frame(interval_row, style="Surface.TFrame")
+        interval_text.pack(side=tk.LEFT, fill=tk.X, expand=True)
+        ttk.Label(
+            interval_text,
+            text="Interval between key presses",
+            style="Surface.TLabel",
+        ).pack(anchor=tk.W)
+        ttk.Label(
+            interval_text,
+            text="From 10 to 5000 milliseconds",
+            style="Muted.Surface.TLabel",
+        ).pack(anchor=tk.W, pady=(2, 0))
+        self.interval_entry = ttk.Spinbox(
+            interval_row,
+            from_=self.autokey.MIN_INTERVAL_MS,
+            to=self.autokey.MAX_INTERVAL_MS,
+            increment=10,
+            width=9,
+            justify="center",
+        )
+        self.interval_entry.set(str(self.autokey.interval_ms))
+        self.interval_entry.pack(side=tk.RIGHT)
+
         action_row = ttk.Frame(frame)
         action_row.pack(fill=tk.X, pady=(4, 0))
         self.lbl_ak_status = tk.Label(
             action_row,
-            text="●  INATIVO",
+            text="●  INACTIVE",
             bg=self.COLORS["background"],
             fg=self.COLORS["muted"],
-            font=("Segoe UI Semibold", 10),
+            font=(self.FONT_FAMILY, 10, "bold"),
         )
         self.lbl_ak_status.pack(side=tk.LEFT, pady=8)
         ttk.Button(
             action_row,
-            text="SALVAR CONFIGURAÇÕES",
+            text="SAVE SETTINGS",
             style="Accent.TButton",
             command=self.apply_autokey,
         ).pack(side=tk.RIGHT)
 
     def _build_camera_tab(self):
         frame = self.tab_camera
-        ttk.Label(frame, text="CÂMERA", style="Title.TLabel").pack(anchor=tk.W)
+        ttk.Label(frame, text="CAMERA", style="Title.TLabel").pack(anchor=tk.W)
         ttk.Label(
             frame,
-            text="Ajuste o enquadramento e a distância da câmera.",
+            text="Adjust the camera framing and distance.",
             style="Subtitle.TLabel",
         ).pack(anchor=tk.W, pady=(3, 15))
 
@@ -311,21 +538,21 @@ class DiabloToolkitApp:
         connection_text.pack(side=tk.LEFT, fill=tk.X, expand=True)
         ttk.Label(
             connection_text,
-            text="CONEXÃO COM O JOGO",
+            text="GAME CONNECTION",
             style="Section.TLabel",
         ).pack(anchor=tk.W)
         self.lbl_cam_status = tk.Label(
             connection_text,
-            text="Aguardando conexão com Diablo IV",
+            text="Waiting to connect to Diablo IV",
             bg=self.COLORS["surface"],
             fg=self.COLORS["muted"],
-            font=("Segoe UI", 9),
+            font=(self.FONT_FAMILY, 9),
             anchor=tk.W,
         )
         self.lbl_cam_status.pack(anchor=tk.W, pady=(4, 0))
         self.attach_button = ttk.Button(
             connection_row,
-            text="CONECTAR",
+            text="CONNECT",
             style="Accent.TButton",
             command=self.attach_and_scan,
         )
@@ -333,7 +560,7 @@ class DiabloToolkitApp:
 
         preset_card = ttk.Frame(frame, style="Surface.TFrame", padding=15)
         preset_card.pack(fill=tk.X, pady=(0, 12))
-        ttk.Label(preset_card, text="PREDEFINIÇÃO", style="Section.TLabel").pack(
+        ttk.Label(preset_card, text="PRESET", style="Section.TLabel").pack(
             anchor=tk.W
         )
         preset_row = ttk.Frame(preset_card, style="Surface.TFrame")
@@ -342,7 +569,7 @@ class DiabloToolkitApp:
         self.combo_presets.pack(side=tk.LEFT, fill=tk.X, expand=True)
         self.apply_preset_button = ttk.Button(
             preset_row,
-            text="APLICAR",
+            text="APPLY",
             command=self.apply_preset,
             state=tk.DISABLED,
         )
@@ -352,16 +579,16 @@ class DiabloToolkitApp:
         controls_card.pack(fill=tk.BOTH, expand=True)
         ttk.Label(
             controls_card,
-            text="AJUSTE MANUAL",
+            text="MANUAL ADJUSTMENTS",
             style="Section.TLabel",
         ).pack(anchor=tk.W, pady=(0, 9))
 
         self.sliders = {}
         controls = [
-            ("FOV", "Campo de visão", 0.0, 2.0),
+            ("FOV", "Field of view", 0.0, 2.0),
             ("Zoom", "Zoom", 0.0, 2.0),
-            ("Height", "Altura", -10.0, 10.0),
-            ("Angle", "Ângulo", 0.0, 25.0),
+            ("Height", "Height", -10.0, 10.0),
+            ("Angle", "Angle", 0.0, 25.0),
         ]
         for name, label, minimum, maximum in controls:
             row = ttk.Frame(controls_card, style="Surface.TFrame")
@@ -412,7 +639,7 @@ class DiabloToolkitApp:
                 data = json.load(preset_file)
         except (OSError, json.JSONDecodeError) as error:
             self.lbl_cam_status.config(
-                text=f"Não foi possível carregar as predefinições: {error}",
+                text=f"Could not load presets: {error}",
                 fg=self.COLORS["orange"],
             )
             return
@@ -424,6 +651,18 @@ class DiabloToolkitApp:
             self.combo_presets.current(0)
 
     def apply_autokey(self):
+        try:
+            interval_ms = int(self.interval_entry.get())
+            self.autokey.set_interval(interval_ms)
+        except ValueError as error:
+            messagebox.showerror(
+                "Invalid interval",
+                str(error) or "Enter the interval in milliseconds.",
+                parent=self.root,
+            )
+            self.interval_entry.focus_set()
+            return
+
         keys = [entry.get() for entry in self.key_entries]
         self.autokey.set_keys(keys)
         new_toggle = self.toggle_entry.get().lower().strip()
@@ -431,8 +670,8 @@ class DiabloToolkitApp:
             self.current_toggle_key = new_toggle
             self._register_hotkey()
         messagebox.showinfo(
-            "Configurações salvas",
-            "As configurações do AutoKeyer foram aplicadas.",
+            "Settings saved",
+            f"Settings applied. Interval: {interval_ms} ms.",
             parent=self.root,
         )
 
@@ -446,25 +685,25 @@ class DiabloToolkitApp:
 
     def _update_autokey_status(self, is_active):
         self.lbl_ak_status.config(
-            text="●  ATIVO" if is_active else "●  INATIVO",
+            text="●  ACTIVE" if is_active else "●  INACTIVE",
             fg=self.COLORS["green"] if is_active else self.COLORS["muted"],
         )
 
     def attach_and_scan(self):
-        self.attach_button.config(state=tk.DISABLED, text="CONECTANDO...")
-        self._set_camera_status("Procurando Diablo IV...", self.COLORS["orange"])
+        self.attach_button.config(state=tk.DISABLED, text="CONNECTING...")
+        self._set_camera_status("Looking for Diablo IV...", self.COLORS["orange"])
         if self.camera.attach():
             self._set_camera_status(
-                "Conectado. Procurando os dados da câmera...",
+                "Connected. Scanning for camera data...",
                 self.COLORS["orange"],
             )
             threading.Thread(target=self._scan_thread_worker, daemon=True).start()
         else:
             self._set_camera_status(
-                "Processo Diablo IV.exe não encontrado.",
+                "Diablo IV.exe process not found.",
                 self.COLORS["red_hover"],
             )
-            self.attach_button.config(state=tk.NORMAL, text="TENTAR NOVAMENTE")
+            self.attach_button.config(state=tk.NORMAL, text="TRY AGAIN")
 
     def _scan_thread_worker(self):
         try:
@@ -476,10 +715,10 @@ class DiabloToolkitApp:
 
     def _scan_success(self):
         self._set_camera_status(
-            "Câmera conectada e pronta para ajuste.",
+            "Camera connected and ready.",
             self.COLORS["green"],
         )
-        self.attach_button.config(state=tk.DISABLED, text="CONECTADO")
+        self.attach_button.config(state=tk.DISABLED, text="CONNECTED")
         for control in self.camera_controls:
             control.state(["!disabled"])
         if self.presets:
@@ -498,7 +737,7 @@ class DiabloToolkitApp:
 
     def _scan_error(self, error):
         self._set_camera_status(str(error), self.COLORS["red_hover"])
-        self.attach_button.config(state=tk.NORMAL, text="TENTAR NOVAMENTE")
+        self.attach_button.config(state=tk.NORMAL, text="TRY AGAIN")
 
     def _set_camera_status(self, text, color):
         self.lbl_cam_status.config(text=text, fg=color)
@@ -519,8 +758,21 @@ class DiabloToolkitApp:
                     self.slider_value_labels[key].config(text=f"{float(value):.2f}")
                     self.update_camera(key, value)
 
+    def open_donation_page(self):
+        if not webbrowser.open_new_tab("https://buymeacoffee.com/kren"):
+            messagebox.showerror(
+                "Could not open donation page",
+                "Open https://buymeacoffee.com/kren in your browser.",
+                parent=self.root,
+            )
+
     def on_close(self):
         self.autokey.stop()
         self.camera.stop_loop_writer()
         keyboard.unhook_all()
         self.root.destroy()
+        if not self._font_api.RemoveFontResourceExW(
+            self._font_path, self.PRIVATE_FONT_FLAG, None
+        ):
+            error = ctypes.get_last_error()
+            raise OSError(error, f"Could not unload bundled Roboto font: {self._font_path}")
