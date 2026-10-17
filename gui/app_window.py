@@ -8,6 +8,7 @@ import webbrowser
 from pathlib import Path
 from ctypes import wintypes
 from tkinter import messagebox, ttk
+import winreg
 
 import keyboard
 
@@ -52,6 +53,7 @@ class DiabloToolkitApp:
         self._configure_window()
         self._configure_styles()
         self._build_layout()
+        self._load_saved_settings()
         self._load_presets()
         self._register_hotkey()
 
@@ -843,6 +845,47 @@ class DiabloToolkitApp:
             slider.state(["disabled"])
             self.camera_controls.append(slider)
 
+    def _load_saved_settings(self):
+        try:
+            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Diablo IV Toolkit") as key:
+                try:
+                    interval = winreg.QueryValueEx(key, "interval_ms")[0]
+                    interval = int(interval)
+                    self.autokey.set_interval(interval)
+                    self.interval_entry.set(str(interval))
+                except FileNotFoundError:
+                    pass
+
+                for index, entry in enumerate(self.key_entries, start=1):
+                    try:
+                        value = winreg.QueryValueEx(key, f"slot_{index}")[0]
+                    except FileNotFoundError:
+                        continue
+                    value = str(value).strip()
+                    if value:
+                        entry.delete(0, tk.END)
+                        entry.insert(0, value.upper())
+                        entry.config(foreground=self.COLORS["text"])
+
+                try:
+                    toggle_key = str(winreg.QueryValueEx(key, "toggle_key")[0]).strip()
+                except FileNotFoundError:
+                    toggle_key = ""
+                if toggle_key:
+                    self.current_toggle_key = toggle_key.lower()
+                    self.toggle_entry.delete(0, tk.END)
+                    self.toggle_entry.insert(0, self.current_toggle_key.upper())
+                    self.toggle_entry.config(foreground=self.COLORS["text"])
+        except FileNotFoundError:
+            return
+
+    def _save_settings(self, interval_ms, keys, toggle_key):
+        with winreg.CreateKey(winreg.HKEY_CURRENT_USER, r"Software\Diablo IV Toolkit") as key:
+            winreg.SetValueEx(key, "interval_ms", 0, winreg.REG_DWORD, int(interval_ms))
+            winreg.SetValueEx(key, "toggle_key", 0, winreg.REG_SZ, str(toggle_key).upper())
+            for index, key_value in enumerate(keys, start=1):
+                winreg.SetValueEx(key, f"slot_{index}", 0, winreg.REG_SZ, str(key_value).upper())
+
     def _load_presets(self):
         preset_path = Path(__file__).resolve().parents[1] / "core" / "DiabloCameraPresets.json"
         try:
@@ -880,6 +923,7 @@ class DiabloToolkitApp:
         if new_toggle and new_toggle != self.current_toggle_key:
             self.current_toggle_key = new_toggle
             self._register_hotkey()
+        self._save_settings(interval_ms, keys, self.current_toggle_key)
         messagebox.showinfo(
             "Settings saved",
             f"Settings applied. Interval: {interval_ms} ms.",
