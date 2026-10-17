@@ -574,6 +574,23 @@ class DiabloToolkitApp:
                 self._tooltip_window.destroy()
             self._tooltip_window = None
 
+    def clear_all_key_inputs(self):
+        for entry in self.key_entries:
+            entry.delete(0, tk.END)
+            entry.config(foreground=self.COLORS["muted"])
+            self._hide_placeholder(entry)
+
+        self.toggle_entry.delete(0, tk.END)
+        self.toggle_entry.config(foreground=self.COLORS["muted"])
+        self._show_placeholder(self.toggle_entry, "Press F1-F12")
+
+        self.autokey.set_keys([])
+        self.current_toggle_key = "f1"
+        self.toggle_entry.delete(0, tk.END)
+        self.toggle_entry.insert(0, "F1")
+        self.toggle_entry.config(foreground=self.COLORS["text"])
+        self._hide_placeholder(self.toggle_entry)
+
     def _get_key_entry_value(self, entry, placeholder):
         value = entry.get().strip()
         if not value or value.upper() == placeholder.upper():
@@ -703,12 +720,12 @@ class DiabloToolkitApp:
         ).pack(anchor=tk.W)
         ttk.Label(
             interval_text,
-            text="From 10 to 5000 milliseconds",
+            text="From 100 to 5000 milliseconds",
             style="Muted.Surface.TLabel",
         ).pack(anchor=tk.W, pady=(2, 0))
         self.interval_entry = ttk.Spinbox(
             interval_row,
-            from_=self.autokey.MIN_INTERVAL_MS,
+            from_=100,
             to=self.autokey.MAX_INTERVAL_MS,
             increment=10,
             width=9,
@@ -716,6 +733,14 @@ class DiabloToolkitApp:
         )
         self.interval_entry.set(str(self.autokey.interval_ms))
         self.interval_entry.pack(side=tk.RIGHT)
+
+        self.clear_inputs_button = ttk.Button(
+            frame,
+            text="CLEAR INPUTS",
+            style="TButton",
+            command=self.clear_all_key_inputs,
+        )
+        self.clear_inputs_button.pack(anchor=tk.W, pady=(12, 0))
 
         action_row = ttk.Frame(frame)
         action_row.pack(fill=tk.X, pady=(4, 0))
@@ -928,6 +953,8 @@ class DiabloToolkitApp:
         keys = [self._get_key_entry_value(entry, "Press a key") for entry in self.key_entries]
         self.autokey.set_keys(keys)
         new_toggle = self._get_key_entry_value(self.toggle_entry, "Press F1-F12").lower()
+        if not new_toggle:
+            new_toggle = self.current_toggle_key
         if new_toggle and new_toggle != self.current_toggle_key:
             self.current_toggle_key = new_toggle
             self._register_hotkey()
