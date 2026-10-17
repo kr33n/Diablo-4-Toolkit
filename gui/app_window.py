@@ -1119,7 +1119,7 @@ class DiabloToolkitApp:
             self.camera.write_camera_value(name, value)
         except CameraPatcherError as error:
             self._set_camera_status(str(error), self.COLORS["red_hover"])
-        if self._applying_preset:
+        if self._applying_preset or not self.camera.is_attached:
             return
         current = self.combo_presets.get()
         if current and current != "Custom" and current not in {"", None}:
